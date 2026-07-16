@@ -162,7 +162,7 @@ const T = { WALL:0, FLOOR:1, HOLE:2, STAIR_UP:3, STAIR_DOWN:4, EXIT:5,
 const DIRS4 = [[1,0],[-1,0],[0,1],[0,-1]];
 
 const TUNE = {
-  accel:14, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
+  accel:20, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
   ballR:0.32, holeCapture:0.35, tiltSmooth:12,
   lightR0:4.5, lightRMax:9, orbLightGain:0.35, torchPool:4,
   camH:7, camD:5, camLerp:6,
@@ -1297,7 +1297,9 @@ function onMotion(e){
   const g = e.accelerationIncludingGravity;
   if(g && g.x!=null){
     lastG = {x:g.x, y:g.y, z:g.z};
-    let tx=(g.x-baseGX)/9.8, ty=(g.z-baseGZ)/9.8;
+    // 前後方向はg.y(sin成分＝符号が正しく反転し中心付近でも敏感)を使う。
+    // g.z(cos成分)は方向を区別できず中心付近でほぼ無反応になるため使わない。
+    let tx=(g.x-baseGX)/9.8, ty=(g.y-baseGY)/9.8;
     if(TUNE.swapXY){ const tmp=tx; tx=ty; ty=tmp; }
     rawTiltX = tx*TUNE.invX;
     rawTiltY = ty*TUNE.invY;
