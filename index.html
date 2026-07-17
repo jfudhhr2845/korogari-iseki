@@ -14,10 +14,11 @@
   #app{position:fixed;inset:0}
   canvas{display:block}
   .hud{position:fixed;pointer-events:none;z-index:6}
-  #top{top:0;left:0;right:0;display:flex;justify-content:space-between;padding:10px;gap:8px}
-  .badge{background:rgba(16,20,26,.72);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:7px 12px;backdrop-filter:blur(8px)}
+  /* 左上☰・右上⚙と重ならないよう左右50pxを空けて中央寄せ */
+  #top{top:0;left:0;right:0;display:flex;justify-content:center;padding:10px 50px;gap:7px}
+  .badge{background:rgba(16,20,26,.72);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:6px 10px;backdrop-filter:blur(8px)}
   .cap{font-size:9px;letter-spacing:2px;opacity:.7;font-weight:900}
-  .val{font-size:20px;font-weight:900;line-height:1.1}
+  .val{font-size:17px;font-weight:900;line-height:1.2}
   #menuBtn{position:fixed;top:10px;left:10px;z-index:8;pointer-events:auto;cursor:pointer;width:34px;height:34px;border-radius:50%;border:none;background:rgba(245,239,225,.9);color:#26323a;font-weight:900;font-size:15px;font-family:inherit}
   #dbgBtn{position:fixed;top:10px;right:10px;z-index:8;pointer-events:auto;cursor:pointer;width:34px;height:34px;border-radius:50%;border:none;background:rgba(245,239,225,.9);color:#26323a;font-weight:900;font-size:16px;font-family:inherit}
   #dbg{position:fixed;top:50px;right:8px;z-index:8;background:rgba(16,20,26,.94);border:1px solid var(--line);border-radius:14px;padding:10px 12px;width:230px;font-size:11px;font-weight:700;max-height:80vh;overflow:auto}
@@ -29,7 +30,7 @@
   #minimap{position:fixed;left:10px;bottom:10px;z-index:6;pointer-events:auto;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(10,10,16,.65);cursor:pointer}
   #minimapBig{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;background:rgba(4,4,8,.88);backdrop-filter:blur(2px)}
   #minimapBig canvas{border-radius:14px;border:1px solid rgba(255,255,255,.2);background:#0a0a10}
-  #mmTabs{position:absolute;top:24px;display:flex;gap:8px}
+  #mmTabs{position:absolute;top:24px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:92vw}
   .mmTab{padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;font-weight:900;cursor:pointer;border:1px solid var(--line)}
   .mmTab.act{background:var(--neon);color:#08120c}
   #toast{position:fixed;left:0;right:0;top:20%;z-index:12;pointer-events:none;text-align:center}
@@ -64,6 +65,29 @@
   #stick{position:fixed;z-index:7;pointer-events:none;opacity:0;transition:opacity .15s}
   #stickBase{position:absolute;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.25)}
   #stickKnob{position:absolute;border-radius:50%;background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.5)}
+  #inv{position:fixed;top:52px;left:10px;z-index:7;display:flex;gap:5px;flex-wrap:wrap;max-width:70vw;pointer-events:auto;cursor:pointer}
+  #inv .chip{background:rgba(16,20,26,.72);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:2px 7px;font-size:14px;font-weight:700}
+  #pickup{position:fixed;left:0;right:0;top:15%;z-index:12;pointer-events:none;text-align:center}
+  #pickupC{display:inline-flex;align-items:center;gap:10px;background:rgba(16,20,26,.9);border:1px solid rgba(232,196,103,.45);border-radius:16px;padding:9px 18px;opacity:0;text-align:left}
+  #pickupC.show{animation:toastA 2.6s ease-out forwards}
+  #pickupIc{font-size:26px}
+  #pickupNm{display:block;font-size:14px;font-weight:900;color:var(--gold)}
+  #pickupDs{display:block;font-size:11px;opacity:.85;font-style:normal;font-weight:600;max-width:64vw}
+  #lightBar{width:64px;height:9px;margin-top:5px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
+  #lightFill{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#ff9040,#ffe9b0)}
+  .draftCard{display:flex;gap:12px;align-items:center;text-align:left;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--txt)}
+  .draftCard:active{transform:scale(.98)}
+  .draftCard .ic{font-size:28px}
+  .draftCard b{font-size:15px}
+  .draftCard i,.invRow i{display:block;font-size:11px;opacity:.8;font-style:normal;font-weight:600}
+  .invList{display:flex;flex-direction:column;gap:8px;text-align:left;margin-top:6px}
+  .invRow{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+  .invRow .ic{font-size:24px}
+  .invRow b{font-size:14px}
+  .loreList{text-align:left;font-size:12px;line-height:2;margin-top:8px;max-height:48vh;overflow:auto;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:600}
+  .loreRow.lk{opacity:.35}
+  .sizeBtn.gold{border-color:rgba(232,196,103,.5)}
+  .sizeBtn.gold.sel{border-color:var(--gold);background:rgba(232,196,103,.14);box-shadow:0 0 12px rgba(232,196,103,.35)}
 </style>
 </head>
 <body>
@@ -73,8 +97,11 @@
 <div id="top" class="hud hidden">
   <div class="badge"><div class="cap">タイム</div><div class="val" id="timeV">0:00.0</div></div>
   <div class="badge"><div class="cap">フロア</div><div class="val" id="floorV">1F</div></div>
-  <div class="badge"><div class="cap">灯り玉</div><div class="val" id="orbV" style="color:var(--gold)">0</div></div>
+  <div class="badge" id="orbB"><div class="cap">灯り玉</div><div class="val" id="orbV" style="color:var(--gold)">0</div></div>
+  <div class="badge hidden" id="lightB"><div class="cap">ひかり</div><div id="lightBar"><i id="lightFill"></i></div></div>
 </div>
+<div id="inv" class="hidden"></div>
+<div id="pickup" class="hud"><span id="pickupC"><span id="pickupIc"></span><span><b id="pickupNm"></b><i id="pickupDs"></i></span></span></div>
 <canvas id="minimap" class="hidden" width="120" height="120"></canvas>
 <div id="minimapBig" class="hidden">
   <div id="mmTabs"></div>
@@ -115,6 +142,7 @@
     <div class="sizeRow" id="sizeRow"></div>
     <button class="btn" id="startBtn">📱 センサー許可してスタート</button>
     <button class="btn sub2" id="fingerBtn">👆 センサー無し（指で操作）</button>
+    <button class="btn sub2" id="loreBtn">📜 遺跡の記録</button>
     <div class="note">iPhoneは「動作と方向」の許可が出ます。file://直開き不可、HTTPS（GitHub Pages等）で。<br>プレイ中の⚙で感度調整・再キャリブレーションができます。</div>
   </div>
 </div>
@@ -150,6 +178,31 @@
   </div>
 </div>
 
+<div id="draft" class="overlay hidden">
+  <div class="card">
+    <div class="logo" style="font-size:22px">加護を<span class="a">選べ</span></div>
+    <div class="sub">新しい階に到達した。ひとつだけ授かることができる</div>
+    <div id="draftList" class="menuList"></div>
+  </div>
+</div>
+
+<div id="invDlg" class="overlay hidden">
+  <div class="card">
+    <div class="logo" style="font-size:20px">もちもの</div>
+    <div id="invList" class="invList"></div>
+    <div class="note">画面をタップで閉じる</div>
+  </div>
+</div>
+
+<div id="lore" class="overlay hidden">
+  <div class="card">
+    <div class="logo" style="font-size:20px">📜 遺跡の記録</div>
+    <div class="sub">「無限の塔」で石碑の欠片を拾うと、物語が明らかになっていく</div>
+    <div id="loreList" class="loreList"></div>
+    <div class="note">画面をタップで閉じる</div>
+  </div>
+</div>
+
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -165,6 +218,7 @@ const TUNE = {
   accel:26, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
   ballR:0.32, holeCapture:0.35, tiltSmooth:12,
   lightR0:4.5, lightRMax:9, orbLightGain:0.35, torchPool:4,
+  lightDecay:0.075, lightMin:1.0, // 無限の塔のみ: 光が毎秒減り、lightMinで力尽きる
   camH:7, camD:5, camLerp:6,
   nudgeWait:1.0, nudgeInterval:0.35, nudgeDist:0.3, nudgeStopV:0.05,
   stickRadius:70,
@@ -180,7 +234,48 @@ const SIZES = {
   small:{label:'こじんまり', sub:'7×7 / 2階', N:15, floors:2, compartmentFloors:[0]},
   std:  {label:'標準',       sub:'10×10 / 3階', N:21, floors:3, compartmentFloors:[0]},
   big:  {label:'巨大',       sub:'15×15 / 4階', N:31, floors:4, compartmentFloors:[0,1]},
+  endless:{label:'無限の塔', sub:'∞F / 挑戦', N:15, floors:1, compartmentFloors:[], endless:true},
 };
+
+/* 加護（無限の塔: 新しい階に到達するたび3択から1つ授かる） */
+const BLESSINGS = {
+  lantern: {icon:'🕯️', name:'灯火の加護', desc:'光の減りが20%ゆるやかになる', stack:true},
+  stardust:{icon:'✨', name:'星屑の加護', desc:'灯り玉の光の回復量が50%増える', stack:true},
+  biglight:{icon:'🔆', name:'大灯の加護', desc:'いますぐ光が大きく回復し、光の上限も少し増える', stack:true},
+  swift:   {icon:'💨', name:'韋駄天の加護', desc:'ボールの加速が15%増える', stack:true},
+  iceshoe: {icon:'⛸️', name:'氷靴の加護', desc:'氷の上でも滑りにくくなる', stack:false},
+  feather: {icon:'🪶', name:'羽根の加護', desc:'ひび割れ床が崩れなくなる', stack:false},
+  magnet:  {icon:'🧲', name:'磁石の加護', desc:'灯り玉を引き寄せて拾いやすくなる', stack:false},
+  dune:    {icon:'🐢', name:'砂避けの加護', desc:'砂だまりで減速しなくなる', stack:false},
+};
+
+/* 石碑の欠片で1行ずつ解放される遺跡の記録（永続コレクション） */
+const LORE = [
+  '一。最初の夜、世界にはまだ灯がなかった。',
+  '二。星のかけらが地に落ち、砂漠の底で眠った。',
+  '三。人々はかけらを掘り出し、塔を建てはじめた。',
+  '四。塔は、星に灯を返すための長い長い階段だった。',
+  '五。灯守と呼ばれる者たちが、丸い灯を転がして登った。',
+  '六。灯は熱くも冷たくもなく、ただ優しく照らした。',
+  '七。氷の間は、灯を急がせないための仕掛けだという。',
+  '八。砂の間は、灯を休ませるための仕掛けだという。',
+  '九。ひび割れた床は、迷いの重さを見分けて落とす。',
+  '十。穴に落ちることは、恥ではなかった。',
+  '十一。「下へ落ちる道こそ、時に正しい」と碑文は言う。',
+  '十二。錆びた鍵は、最後の扉のためだけに作られた。',
+  '十三。羅針盤は星の記憶で動く。だから嘘をつかない。',
+  '十四。ある夜、塔の頂から灯がひとつ、空へ帰った。',
+  '十五。人々は泣き、そして祝った。',
+  '十六。やがて灯守は減り、塔は砂に沈んだ。',
+  '十七。それでも塔の中では、松明が旅人を待ち続けた。',
+  '十八。石碑は旅人を覚えている。何度でも迎えるために。',
+  '十九。最後の灯守は記した。「灯は尽きる。だから美しい」',
+  '二十。「急げ。けれど、転がることを楽しめ」とも。',
+  '二十一。塔の上には、まだ数えきれない階が眠っている。',
+  '二十二。空に帰った灯は、いま星と呼ばれている。',
+  '二十三。あなたの運ぶその灯も、いつか空へ帰るだろう。',
+  '二十四。だから今夜も、遺跡は扉を開けて待っている。',
+];
 
 /* =========================================================================
    S2. ユーティリティ
@@ -748,6 +843,107 @@ function genTower(seed, sizeKey){
   return null;
 }
 
+/* ===== 無限の塔: 1フロアずつ遅延生成 =====
+   通常の塔と違い階をまたぐ仕掛け（密閉区画・鍵扉・羅針盤）は置かず、
+   「入口→上り階段」が穴・ひびを踏まずに必ず到達できることをフロア単位で検証する。
+   シードから決定的に生成されるため、同じシードなら同じ塔が再現される。 */
+function endlessReach(fl, N, from){
+  // from から 穴/ひび/壁 を踏まずに到達できるセル集合（Uint8Array）
+  const blocked = t => t===T.WALL || t===T.HOLE || t===T.CRACK;
+  const seen = new Uint8Array(N*N);
+  if(blocked(fl.tiles[idx(N,from.x,from.y)])) return seen;
+  seen[idx(N,from.x,from.y)] = 1;
+  const q=[[from.x,from.y]]; let qi=0;
+  while(qi<q.length){
+    const [x,y]=q[qi++];
+    for(const [dx,dy] of DIRS4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(N,nx,ny)) continue;
+      const id2=idx(N,nx,ny);
+      if(seen[id2] || blocked(fl.tiles[id2])) continue;
+      seen[id2]=1; q.push([nx,ny]);
+    }
+  }
+  return seen;
+}
+function genEndlessFloor(seed, f, N, prevUp){
+  // 深くなるほど穴・ひび・氷が増える
+  const holesN  = f===0? 0 : Math.min(4, 1+Math.floor(f/3));
+  const cracksN = f===0? 0 : Math.min(4, 1+Math.floor(f/4));
+  const iceN    = Math.min(3, 1+Math.floor(f/5));
+  const sandN   = 1;
+  for(let attempt=0; attempt<40; attempt++){
+    const rng = mulberry32((seed + f*7919 + attempt*104729) >>> 0);
+    const fl = genFloor(rng, N);
+    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set();
+    fl.stairUp=null; fl.stairDown=null; fl.exit=null; fl.doorLock=null; fl.start=null;
+    const reserved = new Set();
+    // 入口（1階はランダム、以降は下の階の上り階段と同座標）
+    let entry;
+    if(f===0){
+      const cells=[]; const cn=(N-1)/2;
+      for(let cy=0;cy<cn;cy++)for(let cx=0;cx<cn;cx++) cells.push({x:2*cx+1,y:2*cy+1});
+      entry = pick(shuffled(cells,rng), rng);
+      fl.start = entry;
+    } else {
+      entry = {x:prevUp.x, y:prevUp.y};
+      fl.stairDown = entry;
+      fl.tiles[idx(N,entry.x,entry.y)] = T.STAIR_DOWN;
+    }
+    reserved.add(key2(entry.x,entry.y));
+    // 上り階段（入口から遠い行き止まり優先）
+    const cand = fl.deadEnds.filter(d=> !reserved.has(key2(d.x,d.y)));
+    if(!cand.length) continue;
+    const far = cand.filter(d=> cellDist(d,entry) >= N/3);
+    const stair = pick(shuffled(far.length?far:cand, rng), rng);
+    fl.stairUp = {x:stair.x, y:stair.y};
+    fl.tiles[idx(N,stair.x,stair.y)] = T.STAIR_UP;
+    reserved.add(key2(stair.x,stair.y));
+    // 穴・ひび（奇数セルのみ＝落下先が必ず床になる）・氷・砂
+    const cn=(N-1)/2, oddCells=[];
+    for(let cy=0;cy<cn;cy++)for(let cx=0;cx<cn;cx++) oddCells.push({x:2*cx+1,y:2*cy+1});
+    const hz = shuffled(oddCells,rng).filter(c=> !reserved.has(key2(c.x,c.y)) && fl.tiles[idx(N,c.x,c.y)]===T.FLOOR);
+    let hi=0;
+    for(let i=0;i<holesN && hi<hz.length;i++,hi++){ fl.tiles[idx(N,hz[hi].x,hz[hi].y)]=T.HOLE; reserved.add(key2(hz[hi].x,hz[hi].y)); }
+    for(let i=0;i<cracksN && hi<hz.length;i++,hi++){ fl.tiles[idx(N,hz[hi].x,hz[hi].y)]=T.CRACK; reserved.add(key2(hz[hi].x,hz[hi].y)); }
+    placePatch(fl, N, rng, iceN, T.ICE, reserved);
+    placePatch(fl, N, rng, sandN, T.SAND, reserved);
+    // 検証: 入口から上り階段へ穴・ひびなしで到達できること
+    const reach = endlessReach(fl, N, entry);
+    if(!reach[idx(N,stair.x,stair.y)]) continue;
+    // アイテムは到達可能なセルにだけ置く（灯り玉・欠片・松明）
+    const floorTiles=[];
+    for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){
+      if(fl.tiles[idx(N,x,y)]===T.FLOOR && reach[idx(N,x,y)] && !reserved.has(key2(x,y))) floorTiles.push({x,y});
+    }
+    const pool = shuffled(floorTiles, rng);
+    let pi=0;
+    const orbN = Math.max(4, GEN.orbsPerFloor - Math.floor(f/6));
+    for(let i=0;i<orbN && pi<pool.length;i++,pi++)
+      fl.items.push({kind:'orb', x:pool[pi].x, y:pool[pi].y, taken:false, star:false});
+    if((f%4===3 || rng()<0.25) && pi<pool.length){
+      fl.items.push({kind:'fragment', x:pool[pi].x, y:pool[pi].y, taken:false}); pi++;
+    }
+    const torchSpots=[];
+    for(const c of floorTiles){
+      const wallDirs = DIRS4.filter(([dx,dy])=> inb(N,c.x+dx,c.y+dy) && fl.tiles[idx(N,c.x+dx,c.y+dy)]===T.WALL);
+      if(wallDirs.length) torchSpots.push({x:c.x, y:c.y, wallDirs});
+    }
+    const tp = shuffled(torchSpots, rng);
+    for(let i=0;i<GEN.torchesPerFloor && i<tp.length;i++){
+      const spot=tp[i]; const [wdx,wdy]=pick(spot.wallDirs, rng);
+      fl.items.push({kind:'torch', x:spot.x, y:spot.y, wdx, wdy, taken:false});
+    }
+    return fl;
+  }
+  return null;
+}
+function genEndlessTower(seed, N){
+  const f0 = genEndlessFloor(seed, 0, N, null);
+  if(!f0) return null;
+  return { seed, N, floors:[f0], start:f0.start, endless:true, sizeKey:'endless' };
+}
+
 /* =========================================================================
    ここから先はブラウザ実行専用（THREE / DOM / センサー等）
    ========================================================================= */
@@ -772,6 +968,7 @@ const state = {
   phase:'menu', f:0, orbs:0, hasKey:false, hasCompass:false,
   checkpoint:null, timeMs:0, prevCell:null, stairArmed:true,
   nudge:{stillT:0, kicking:false, kickIdx:0, kickT:0},
+  blessings:{}, maxF:0, fragRun:0, // 無限の塔: 加護・最高到達階・このランで拾った欠片
 };
 
 /* ===== S5. THREE初期化 ===== */
@@ -839,6 +1036,7 @@ const MAT = {
   chest: new THREE.MeshStandardMaterial({color:0x8a5a2a, roughness:0.85}),
   chestBand: new THREE.MeshStandardMaterial({color:0xc9a03a, metalness:0.5, roughness:0.4}),
   stele: new THREE.MeshStandardMaterial({color:0x6a7a8a, roughness:0.8}),
+  fragment: new THREE.MeshStandardMaterial({color:0x9fd8ff, emissive:0x4aa0e8, emissiveIntensity:1.0, roughness:0.4}),
   ball: new THREE.MeshStandardMaterial({color:0xffffff, map:BALL_TEX, emissive:0xffc078, emissiveMap:BALL_TEX, emissiveIntensity:1.3, roughness:0.35}),
 };
 const GEO3 = {
@@ -976,6 +1174,13 @@ function buildItemMesh(it, group){
     flame.position.set(-wdx*0.16, 1.02, -wdy*0.16);
     g.add(flame);
     g.position.set(it.x+0.5+wdx*0.42, 0, it.y+0.5+wdy*0.42);
+  } else if(it.kind==='fragment'){
+    const tab = new THREE.Mesh(GEO3.box, MAT.fragment);
+    tab.scale.set(0.26,0.4,0.06);
+    tab.position.y = 0.32;
+    tab.rotation.y = 0.6;
+    g.add(tab);
+    g.position.set(it.x+0.5, 0, it.y+0.5);
   } else {
     g = null;
   }
@@ -1093,7 +1298,8 @@ function updateBallMesh(dt){
   flashT = Math.max(0, flashT-dt);
   ballLight.intensity = 2.4 + (flashT>0 ? 2.0*(flashT/0.15) : 0);
   scene.fog.near = Math.max(0.5, ball.lightR*0.7);
-  scene.fog.far = ball.lightR*2.4;
+  // 下限9.5: カメラ〜ボール距離(≈8.6)を下回ると画面全体が暗転してしまう（無限の塔の低光量時）
+  scene.fog.far = Math.max(9.5, ball.lightR*2.4);
 }
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
@@ -1172,6 +1378,17 @@ function collapseCrack(f,x,y){
   toast('ひび割れ床が崩落した！');
 }
 function pickupItem(it, fl){
+  if(it.kind==='stele'){
+    // 石碑は消費しない: 何度でも触れて checkpoint を切り替えられる（見た目も残す）
+    const cp = state.checkpoint;
+    if(cp && cp.f===state.f && cp.x===it.x && cp.y===it.y) return;
+    state.checkpoint = {f:state.f, x:it.x, y:it.y};
+    it.registered = true;
+    if(it.topMesh) it.topMesh.material.emissiveIntensity = 1.2;
+    toast('🏛️ チェックポイント登録');
+    beep(440,0.1,'sine'); setTimeout(()=>beep(660,0.15,'sine'),90);
+    return;
+  }
   it.taken = true;
   if(it.mesh) it.mesh.visible = false;
   if(it.kind==='orb'){
@@ -1180,31 +1397,35 @@ function pickupItem(it, fl){
     comboN++; comboT=now;
     chime(comboN);
     state.orbs++;
-    ball.lightR = Math.min(TUNE.lightRMax, ball.lightR + TUNE.orbLightGain);
+    const gain = (tower.endless? 0.45 : TUNE.orbLightGain) * (1 + 0.5*(state.blessings.stardust||0));
+    ball.lightR = Math.min(maxLight(), ball.lightR + gain);
     updateHUD();
   } else if(it.kind==='key'){
     state.hasKey = true;
-    toast('🗝️ 鍵を手に入れた');
+    showPickup('🗝️','古い鍵','錠前の扉を開けられるようになった');
     beep(700,0.15,'triangle');
     invalidateDistField();
+    updateInv();
+  } else if(it.kind==='fragment'){
+    state.fragRun++;
+    const line = unlockLore();
+    if(tower.endless) ball.lightR = Math.min(maxLight(), ball.lightR + 0.6);
+    showPickup('📜','石碑の欠片', line || '遺跡の記録はすべて埋まっている');
+    beep(520,0.1,'triangle'); setTimeout(()=>beep(780,0.15,'triangle'),90);
+    updateInv();
   } else if(it.kind==='chest'){
     beep(600,0.1,'square'); setTimeout(()=>beep(900,0.15,'triangle'),100);
     if(it.content==='compass'){
       state.hasCompass = true;
-      toast('🧭 古の羅針盤を手に入れた！');
+      showPickup('🧭','古の羅針盤','止まっていると出口の方角へ導いてくれる');
       invalidateDistField();
+      updateInv();
     } else {
       state.orbs += 5;
-      ball.lightR = Math.min(TUNE.lightRMax, ball.lightR + TUNE.orbLightGain*2);
-      toast('✨ 灯り玉×5！');
+      ball.lightR = Math.min(maxLight(), ball.lightR + TUNE.orbLightGain*2);
+      showPickup('✨','灯り玉×5','光がひとまわり大きくなった');
       updateHUD();
     }
-  } else if(it.kind==='stele'){
-    it.registered = true;
-    state.checkpoint = {f:state.f, x:it.x, y:it.y};
-    if(it.topMesh) it.topMesh.material.emissiveIntensity = 1.2;
-    toast('🏛️ チェックポイント登録');
-    beep(440,0.1,'sine'); setTimeout(()=>beep(660,0.15,'sine'),90);
   }
 }
 function updateTileTriggers(){
@@ -1213,7 +1434,7 @@ function updateTileTriggers(){
   const cellBeforeThisFrame = state.prevCell;
   if(cellBeforeThisFrame && (cx!==cellBeforeThisFrame.x || cz!==cellBeforeThisFrame.y)){
     const pt = tileAt(state.f, cellBeforeThisFrame.x, cellBeforeThisFrame.y);
-    if(pt===T.CRACK) collapseCrack(state.f, cellBeforeThisFrame.x, cellBeforeThisFrame.y);
+    if(pt===T.CRACK && !state.blessings.feather) collapseCrack(state.f, cellBeforeThisFrame.x, cellBeforeThisFrame.y);
   }
   state.prevCell = {x:cx, y:cz};
 
@@ -1244,8 +1465,9 @@ function updateTileTriggers(){
   if(t===T.EXIT){ beginClear(); return; }
 
   for(const it of fl.items){
-    if(it.taken) continue;
-    if(Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5)) < 0.5) pickupItem(it, fl);
+    if(it.taken || it.kind==='torch') continue; // 松明は拾えない（飾り＋光源）
+    const rr = (it.kind==='orb' && state.blessings.magnet)? 1.6 : 0.5;
+    if(Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5)) < rr) pickupItem(it, fl);
   }
 }
 function physicsStep(dt){
@@ -1256,8 +1478,9 @@ function physicsStep(dt){
   const cellBefore = {x:Math.floor(ball.x), y:Math.floor(ball.z)};
   const curTile = tileAt(state.f, cellBefore.x, cellBefore.y);
   const onIce = curTile===T.ICE, onSand = curTile===T.SAND;
-  const damp = onIce? TUNE.dampIce : onSand? TUNE.dampSand : TUNE.damp;
-  const accelMul = onSand? 0.5 : 1;
+  const bl = state.blessings;
+  const damp = onIce? (bl.iceshoe? 2.2 : TUNE.dampIce) : onSand? (bl.dune? TUNE.damp : TUNE.dampSand) : TUNE.damp;
+  const accelMul = (onSand && !bl.dune? 0.5 : 1) * Math.pow(1.15, bl.swift||0);
 
   ball.vx += dz.x * TUNE.accel * accelMul * dt;
   ball.vz += dz.y * TUNE.accel * accelMul * dt;
@@ -1272,6 +1495,14 @@ function physicsStep(dt){
 
   updateTileTriggers();
   updateNudge(dt, speed);
+
+  // 無限の塔: 光＝命。時間とともに光が縮み、尽きるとラン終了
+  if(tower.endless && state.phase==='play'){
+    const prevL = ball.lightR;
+    ball.lightR -= lightDecayRate()*dt;
+    if(prevL>2.2 && ball.lightR<=2.2) beep(220,0.35,'sine',0.2); // 残りわずか警告
+    if(ball.lightR<=TUNE.lightMin){ ball.lightR=TUNE.lightMin; dieEndless(); }
+  }
 }
 
 /* ===== S8. フロア遷移 ===== */
@@ -1285,7 +1516,9 @@ function beginStairs(sx,sy,goingUp){
   ball.x=sx+0.5; ball.z=sy+0.5; ball.vx=0; ball.vz=0;
   state.phase='stairs';
   state.stairArmed=false;
-  transition = {type:'stairs', fromF:state.f, toF: goingUp? state.f+1 : state.f-1, t0:performance.now(), dur:500};
+  const toF = goingUp? state.f+1 : state.f-1;
+  if(tower.endless && goingUp && toF >= tower.floors.length) appendEndlessFloor();
+  transition = {type:'stairs', fromF:state.f, toF, t0:performance.now(), dur:500};
   beep(500,0.1,'triangle'); setTimeout(()=>beep(700,0.14,'triangle'),90);
 }
 function beginClear(){
@@ -1304,6 +1537,11 @@ function finishTransition(){
   } else if(tr.type==='stairs'){
     state.f = tr.toF; state.phase='play'; state.prevCell=null;
     updateFloorVisibility();
+    if(tower.endless && tr.toF > state.maxF){
+      state.maxF = tr.toF;
+      ball.lightR = Math.min(maxLight(), ball.lightR + 0.5); // 到達ボーナス
+      openDraft();
+    }
   } else if(tr.type==='clear'){
     finishGame();
   }
@@ -1375,7 +1613,7 @@ function calibrate(cb){
     }
   }, 750);
 }
-const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,.overlay,#minimap,#minimapBig');
+const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,#inv,.overlay,#minimap,#minimapBig');
 let dragOn=false, dragCX=0, dragCY=0;
 function bindFinger(){
   window.addEventListener('pointerdown', e=>{
@@ -1446,7 +1684,7 @@ function compassDirection(){
 }
 function weakDirection(){
   const fl = tower.floors[state.f];
-  const target = (state.f < tower.floors.length-1) ? fl.stairUp : fl.exit;
+  const target = fl.stairUp || fl.exit; // 通常: 最上階のみexit / 無限の塔: 常にstairUp
   if(!target) return null;
   const dx=(target.x+0.5)-ball.x, dy=(target.y+0.5)-ball.z;
   const len=Math.hypot(dx,dy)||1;
@@ -1533,7 +1771,8 @@ function drawMinimap(dt, big){
 function buildMmTabs(){
   const wrap = el('mmTabs');
   wrap.innerHTML = '';
-  for(let f=0; f<=state.f; f++){
+  const f0 = tower.endless? Math.max(0, state.f-5) : 0; // 無限の塔は直近6階分だけ
+  for(let f=f0; f<=state.f; f++){
     const b = document.createElement('div');
     b.className = 'mmTab'+(f===mmBigFloor?' act':'');
     b.textContent = (f+1)+'F';
@@ -1609,7 +1848,7 @@ function buildSizeRow(){
   wrap.innerHTML='';
   for(const k of Object.keys(SIZES)){
     const b=document.createElement('div');
-    b.className='sizeBtn'+(k===sizeKey?' sel':'');
+    b.className='sizeBtn'+(k===sizeKey?' sel':'')+(SIZES[k].endless?' gold':'');
     b.innerHTML = SIZES[k].label+'<br><span style="opacity:.6;font-size:10px">'+SIZES[k].sub+'</span>';
     b.addEventListener('click', ()=>{ sizeKey=k; buildSizeRow(); });
     wrap.appendChild(b);
@@ -1617,7 +1856,8 @@ function buildSizeRow(){
 }
 function startGame(newSeed){
   const seedToUse = newSeed!=null ? newSeed : Math.floor(Math.random()*1e6);
-  const built = genTower(seedToUse, sizeKey);
+  const cfg = SIZES[sizeKey];
+  const built = cfg.endless ? genEndlessTower(seedToUse, cfg.N) : genTower(seedToUse, sizeKey);
   if(!built){
     toast('生成に失敗しました。もう一度お試しください');
     return false;
@@ -1629,6 +1869,7 @@ function startGame(newSeed){
   state.orbs=0; state.hasKey=false; state.hasCompass=false;
   state.checkpoint=null; state.timeMs=0; state.prevCell=null; state.stairArmed=true;
   state.nudge={stillT:0,kicking:false,kickIdx:0,kickT:0};
+  state.blessings={}; state.maxF=0; state.fragRun=0;
   ball.x=tower.start.x+0.5; ball.z=tower.start.y+0.5; ball.vx=0; ball.vz=0;
   ball.lightR=TUNE.lightR0;
   distField=null; comboN=0; comboT=0;
@@ -1640,6 +1881,11 @@ function startGame(newSeed){
   el('minimap').classList.remove('hidden');
   el('menuBtn').classList.remove('hidden');
   el('dbgBtn').classList.remove('hidden');
+  el('orbB').classList.toggle('hidden', !!tower.endless);
+  el('lightB').classList.toggle('hidden', !tower.endless);
+  el('steleBtn').classList.toggle('hidden', !!tower.endless); // 無限の塔に石碑はない
+  el('vignette').style.opacity = 0;
+  updateInv();
   updateHUD();
   return true;
 }
@@ -1659,7 +1905,128 @@ function finishGame(){
   el('minimap').classList.add('hidden');
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
+  el('inv').classList.add('hidden');
   el('result').classList.remove('hidden');
+}
+
+/* ===== S15. 拾得バナー・持ち物・加護ドラフト・無限の塔・遺跡の記録 ===== */
+function maxLight(){ return TUNE.lightRMax + 0.5*(state.blessings.biglight||0); }
+function lightDecayRate(){ return TUNE.lightDecay * Math.pow(0.8, state.blessings.lantern||0); }
+function showPickup(icon, name, desc){
+  el('pickupIc').textContent = icon;
+  el('pickupNm').textContent = name;
+  el('pickupDs').textContent = desc;
+  const c = el('pickupC');
+  c.classList.remove('show'); void c.offsetWidth; c.classList.add('show');
+}
+function invItems(){
+  const li = [];
+  if(state.hasKey) li.push({icon:'🗝️', name:'古い鍵', desc:'錠前の扉を開けられる'});
+  if(state.hasCompass) li.push({icon:'🧭', name:'古の羅針盤', desc:'止まっていると出口の方角へ導いてくれる'});
+  for(const [bid,n] of Object.entries(state.blessings)){
+    const b = BLESSINGS[bid];
+    li.push({icon:b.icon, name:b.name, desc:b.desc, count:n});
+  }
+  if(state.fragRun>0) li.push({icon:'📜', name:'石碑の欠片', desc:'遺跡の記録に加わった', count:state.fragRun});
+  return li;
+}
+function updateInv(){
+  const items = invItems();
+  const inv = el('inv');
+  if(!items.length){ inv.classList.add('hidden'); return; }
+  inv.classList.remove('hidden');
+  inv.innerHTML = items.map(i=>'<span class="chip">'+i.icon+(i.count>1?'×'+i.count:'')+'</span>').join('');
+}
+function openInvDlg(){
+  if(state.phase!=='play') return;
+  state.phase='pause';
+  el('invList').innerHTML = invItems().map(i=>
+    '<div class="invRow"><span class="ic">'+i.icon+'</span><span><b>'+i.name+(i.count>1?' ×'+i.count:'')+'</b><i>'+i.desc+'</i></span></div>'
+  ).join('') || '<div style="opacity:.6">まだ何も持っていない</div>';
+  el('invDlg').classList.remove('hidden');
+}
+/* --- 加護ドラフト --- */
+function openDraft(){
+  state.phase='draft';
+  const avail = Object.keys(BLESSINGS).filter(id2=> BLESSINGS[id2].stack || !state.blessings[id2]);
+  const picks = shuffled(avail, Math.random).slice(0,3);
+  const wrap = el('draftList');
+  wrap.innerHTML = '';
+  for(const id2 of picks){
+    const b = BLESSINGS[id2];
+    const btn = document.createElement('button');
+    btn.className = 'draftCard';
+    btn.innerHTML = '<span class="ic">'+b.icon+'</span><span><b>'+b.name+(state.blessings[id2]?' ×'+(state.blessings[id2]+1):'')+'</b><i>'+b.desc+'</i></span>';
+    btn.addEventListener('click', ()=>{
+      applyBlessing(id2);
+      el('draft').classList.add('hidden');
+      state.phase='play';
+    });
+    wrap.appendChild(btn);
+  }
+  el('draft').classList.remove('hidden');
+}
+function applyBlessing(id2){
+  state.blessings[id2] = (state.blessings[id2]||0)+1;
+  const b = BLESSINGS[id2];
+  if(id2==='biglight') ball.lightR = Math.min(maxLight(), ball.lightR + 2.5);
+  showPickup(b.icon, b.name+'を授かった', b.desc);
+  beep(600,0.1,'triangle'); setTimeout(()=>beep(900,0.18,'triangle'),110);
+  updateInv();
+}
+/* --- 無限の塔 --- */
+function appendEndlessFloor(){
+  const f = tower.floors.length;
+  const prevUp = tower.floors[f-1].stairUp;
+  let fl = null;
+  for(let s=0; s<5 && !fl; s++) fl = genEndlessFloor((tower.seed + s*613)>>>0, f, tower.N, prevUp);
+  if(!fl) return; // 内部で各40回リトライするため実質起こらない
+  tower.floors.push(fl);
+  const g = buildOneFloorGroup(tower, f);
+  scene.add(g);
+  floorGroups.push(g);
+}
+function dieEndless(){
+  state.phase='dead';
+  el('vignette').style.opacity = 0;
+  const depth = state.maxF+1;
+  let best=0; try{ best=+localStorage.getItem('iseki_best_endless')||0; }catch(e){}
+  const isBest = depth>best;
+  if(isBest){ try{ localStorage.setItem('iseki_best_endless', depth); }catch(e){} }
+  beep(200,0.4,'sine',0.2); setTimeout(()=>beep(130,0.6,'sine',0.16),200);
+  el('rEmoji').textContent='🕯️';
+  el('rTitle').textContent='光が尽きた…';
+  el('rScore').textContent=depth+'F';
+  el('rSub').innerHTML = formatTime(state.timeMs)+'　欠片 '+state.fragRun
+    + (isBest? '<br><span class="nbest">★最高到達を更新！</span>' : '<br>最高到達 '+Math.max(best,depth)+'F');
+  el('top').classList.add('hidden');
+  el('minimap').classList.add('hidden');
+  el('menuBtn').classList.add('hidden');
+  el('dbgBtn').classList.add('hidden');
+  el('inv').classList.add('hidden');
+  el('result').classList.remove('hidden');
+}
+/* --- 遺跡の記録（欠片の永続コレクション） --- */
+function loreCount(){
+  let n=0; try{ n = Math.min(LORE.length, +localStorage.getItem('iseki_lore')||0); }catch(e){}
+  return n;
+}
+function unlockLore(){
+  const n = loreCount();
+  if(n >= LORE.length) return null;
+  try{ localStorage.setItem('iseki_lore', n+1); }catch(e){}
+  updateLoreBtn();
+  return LORE[n];
+}
+function updateLoreBtn(){
+  el('loreBtn').textContent = '📜 遺跡の記録（'+loreCount()+'/'+LORE.length+'）';
+}
+function openLore(){
+  const n = loreCount();
+  el('loreList').innerHTML = LORE.map((t,i)=>
+    '<div class="loreRow'+(i<n?'':' lk')+'">'+(i<n? t : '？？？')+'</div>'
+  ).join('');
+  el('lore').classList.remove('hidden');
 }
 
 /* ===== ⚙デバッグパネル ===== */
@@ -1761,7 +2128,9 @@ el('retireBtn').onclick = ()=>{
   el('minimap').classList.add('hidden');
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
+  el('inv').classList.add('hidden');
   state.phase='menu';
+  updateLoreBtn();
   el('start').classList.remove('hidden');
 };
 el('minimap').addEventListener('pointerdown', e=>{
@@ -1775,6 +2144,14 @@ el('minimapBig').addEventListener('pointerdown', e=>{
   if(e.target.closest('.mmTab')) return;
   el('minimapBig').classList.add('hidden');
 });
+el('inv').addEventListener('pointerdown', e=>{ e.stopPropagation(); openInvDlg(); });
+el('invDlg').addEventListener('pointerdown', ()=>{
+  el('invDlg').classList.add('hidden');
+  if(state.phase==='pause') state.phase='play';
+});
+el('loreBtn').onclick = ()=>{ beep(440,0.05); openLore(); };
+el('lore').addEventListener('pointerdown', ()=>{ el('lore').classList.add('hidden'); });
+updateLoreBtn();
 
 /* ===== S14. メインループ ===== */
 function loop(){
@@ -1799,6 +2176,10 @@ function loop(){
     drawMinimap(dt,false);
     if(!el('minimapBig').classList.contains('hidden')) drawMinimap(dt,true);
     if(state.phase!=='menu') el('timeV').textContent = formatTime(state.timeMs);
+    if(tower.endless){
+      el('lightFill').style.width = clamp((ball.lightR-TUNE.lightMin)/(maxLight()-TUNE.lightMin), 0, 1)*100+'%';
+      el('vignette').style.opacity = state.phase==='dead'? 0 : clamp((2.6-ball.lightR)/1.6, 0, 0.85);
+    }
   }
   updateDebugReadout();
   updateFps(dt);
@@ -1814,6 +2195,12 @@ bindDebugPanel();
 bindFinger();
 prevT = performance.now();
 loop();
+
+// デバッグ用フック（DevToolsから状態確認・検証に使う。ゲーム動作には不関与）
+window.__iseki = {
+  get state(){ return state; }, get ball(){ return ball; }, get tower(){ return tower; },
+  TUNE, openDraft, pickupItem,
+};
 </script>
 </body>
 </html>
