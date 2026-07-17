@@ -86,7 +86,7 @@
 
 <div id="dbg" class="hidden">
   <b>⚙ デバッグパネル</b>
-  <label>傾き感度 <span class="dv" id="v_accel"></span><input type="range" id="s_accel" min="4" max="26" step="0.5"></label>
+  <label>傾き感度 <span class="dv" id="v_accel"></span><input type="range" id="s_accel" min="4" max="40" step="0.5"></label>
   <label>デッドゾーン <span class="dv" id="v_dz"></span><input type="range" id="s_dz" min="0" max="0.25" step="0.01"></label>
   <label>摩擦 <span class="dv" id="v_damp"></span><input type="range" id="s_damp" min="1" max="8" step="0.1"></label>
   <label>光半径(初期) <span class="dv" id="v_lr"></span><input type="range" id="s_lr" min="2.5" max="8" step="0.25"></label>
@@ -162,7 +162,7 @@ const T = { WALL:0, FLOOR:1, HOLE:2, STAIR_UP:3, STAIR_DOWN:4, EXIT:5,
 const DIRS4 = [[1,0],[-1,0],[0,1],[0,-1]];
 
 const TUNE = {
-  accel:20, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
+  accel:26, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
   ballR:0.32, holeCapture:0.35, tiltSmooth:12,
   lightR0:4.5, lightRMax:9, orbLightGain:0.35, torchPool:4,
   camH:7, camD:5, camLerp:6,
@@ -794,6 +794,33 @@ function initThree(){
 }
 
 /* ===== S6. マテリアル・ジオメトリ・フロア描画 ===== */
+// ボール用テクスチャ（外部画像なしの手続き生成: まだら模様＋赤道帯＋ルーン風刻印）。
+// emissiveMapにも同じものを使い、発光にも模様を乗せて転がりが見えるようにする
+function makeBallTexture(){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const x = cv.getContext('2d');
+  const rnd = mulberry32(0xB0A11);
+  x.fillStyle = '#ffe2b0'; x.fillRect(0, 0, 256, 256);
+  for(let i=0;i<90;i++){
+    x.fillStyle = `rgba(${170+rnd()*40|0},${110+rnd()*40|0},${50+rnd()*30|0},${0.10+rnd()*0.12})`;
+    x.beginPath(); x.arc(rnd()*256, rnd()*256, 6+rnd()*22, 0, Math.PI*2); x.fill();
+  }
+  x.strokeStyle = 'rgba(120,70,30,0.55)'; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(0, 128); x.lineTo(256, 128); x.stroke();
+  x.lineWidth = 4; x.lineCap = 'round';
+  for(let i=0;i<14;i++){
+    const cx = i*18+6, cy = 128 + (rnd()<0.5?-1:1)*(12+rnd()*26);
+    x.strokeStyle = `rgba(110,60,25,${0.35+rnd()*0.3})`;
+    x.beginPath();
+    x.moveTo(cx, cy-6-rnd()*8); x.lineTo(cx, cy+6+rnd()*8);
+    if(rnd()<0.6){ x.moveTo(cx-5, cy); x.lineTo(cx+5, cy-4); }
+    x.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const BALL_TEX = makeBallTexture();
 const MAT = {
   wall: new THREE.MeshStandardMaterial({color:0x5a5248, roughness:0.95}),
   floor: new THREE.MeshStandardMaterial({color:0x3a362f, roughness:0.95}),
@@ -812,7 +839,7 @@ const MAT = {
   chest: new THREE.MeshStandardMaterial({color:0x8a5a2a, roughness:0.85}),
   chestBand: new THREE.MeshStandardMaterial({color:0xc9a03a, metalness:0.5, roughness:0.4}),
   stele: new THREE.MeshStandardMaterial({color:0x6a7a8a, roughness:0.8}),
-  ball: new THREE.MeshStandardMaterial({color:0xffdca0, emissive:0xffb060, emissiveIntensity:1.4, roughness:0.35}),
+  ball: new THREE.MeshStandardMaterial({color:0xffffff, map:BALL_TEX, emissive:0xffc078, emissiveMap:BALL_TEX, emissiveIntensity:1.3, roughness:0.35}),
 };
 const GEO3 = {
   wallBox: new THREE.BoxGeometry(1, 1.4, 1),
@@ -1050,9 +1077,17 @@ function currentWorldY(){
   }
   return state.f*GEN.floorHeight;
 }
+const _rollAxis = new THREE.Vector3(), _rollQ = new THREE.Quaternion();
 function updateBallMesh(dt){
   const y = currentWorldY() + TUNE.ballR;
   ballMesh.position.set(ball.x, y, ball.z);
+  // 転がり回転: 滑りなし条件 ω=(v×up)/r → 回転軸(-vz,0,vx)
+  const sp = Math.hypot(ball.vx, ball.vz);
+  if(sp > 0.01){
+    _rollAxis.set(-ball.vz, 0, ball.vx).normalize();
+    _rollQ.setFromAxisAngle(_rollAxis, sp*dt/TUNE.ballR);
+    ballMesh.quaternion.premultiply(_rollQ);
+  }
   ballLight.position.copy(ballMesh.position);
   ballLight.distance = ball.lightR*2;
   flashT = Math.max(0, flashT-dt);
@@ -1299,7 +1334,9 @@ function onMotion(e){
     lastG = {x:g.x, y:g.y, z:g.z};
     // 前後方向はg.y(sin成分＝符号が正しく反転し中心付近でも敏感)を使う。
     // g.z(cos成分)は方向を区別できず中心付近でほぼ無反応になるため使わない。
-    let tx=(g.x-baseGX)/9.8, ty=(g.y-baseGY)/9.8;
+    // g.yは「手前に傾ける＝正」なので画面奥方向と逆。符号を反転して未チェックで正しい向きにする
+    // (実機テストで確認済み。指モードの向きには影響しない)。
+    let tx=(g.x-baseGX)/9.8, ty=-(g.y-baseGY)/9.8;
     if(TUNE.swapXY){ const tmp=tx; tx=ty; ty=tmp; }
     rawTiltX = tx*TUNE.invX;
     rawTiltY = ty*TUNE.invY;
@@ -1627,14 +1664,15 @@ function finishGame(){
 
 /* ===== ⚙デバッグパネル ===== */
 function saveTune(){
-  try{ localStorage.setItem('iseki_tune', JSON.stringify({
+  try{ localStorage.setItem('iseki_tune2', JSON.stringify({
     accel:TUNE.accel, deadzone:TUNE.deadzone, damp:TUNE.damp, lightR0:TUNE.lightR0,
     nudgeDist:TUNE.nudgeDist, camH:TUNE.camH, invX:TUNE.invX, invY:TUNE.invY, swapXY:TUNE.swapXY
   })); }catch(e){}
 }
 function loadTune(){
   try{
-    const s = localStorage.getItem('iseki_tune');
+    // キー旧版('iseki_tune')は感度26化・Y符号修正前の保存値なので引き継がない
+    const s = localStorage.getItem('iseki_tune2');
     if(!s) return;
     Object.assign(TUNE, JSON.parse(s));
   }catch(e){}
