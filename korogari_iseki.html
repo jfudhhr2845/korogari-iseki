@@ -11,7 +11,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;background:#050408}
   body{font-family:'Zen Maru Gothic',sans-serif;color:var(--txt);-webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none}
-  #app{position:fixed;inset:0}
+  #app{position:fixed;inset:0;filter:url(#brightGamma)}
   canvas{display:block}
   .hud{position:fixed;pointer-events:none;z-index:6}
   /* 左上☰・右上⚙と重ならないよう左右50pxを空けて中央寄せ */
@@ -38,7 +38,6 @@
   #toastT.show{animation:toastA 2.2s ease-out forwards}
   @keyframes toastA{0%{opacity:0;transform:translateY(-8px)}12%{opacity:1;transform:translateY(0)}82%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
   #vignette{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px rgba(0,0,0,.9);transition:opacity .3s}
-  #brightOverlay{position:fixed;inset:0;z-index:4;pointer-events:none;background:#fff;mix-blend-mode:screen;opacity:0}
   #brightCalib{position:fixed;left:0;right:0;bottom:0;z-index:21;display:flex;justify-content:center;padding:14px;pointer-events:none}
   #brightCalib .bcCard{pointer-events:auto;width:min(92vw,420px);background:rgba(16,20,26,.92);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;text-align:center;backdrop-filter:blur(8px);box-shadow:0 10px 30px rgba(0,0,0,.55)}
   #brightCalib .bcTitle{font-size:14px;font-weight:900}
@@ -102,7 +101,15 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="brightOverlay"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="brightGamma" color-interpolation-filters="sRGB">
+    <feComponentTransfer>
+      <feFuncR type="gamma" exponent="1" id="gammaR"/>
+      <feFuncG type="gamma" exponent="1" id="gammaG"/>
+      <feFuncB type="gamma" exponent="1" id="gammaB"/>
+    </feComponentTransfer>
+  </filter>
+</svg>
 <button id="menuBtn" class="hidden">☰</button>
 <button id="dbgBtn" class="hidden">⚙</button>
 <div id="top" class="hud hidden">
@@ -2446,7 +2453,12 @@ function placeBrightTicks(){
   el('tl_bright3').style.left = pct;
 }
 function applyBright(v){
-  el('brightOverlay').style.opacity = v/100;
+  // ガンマ補正（x^exponent、exponent<1で暗部を持ち上げる）。加算合成の白幕と違い、
+  // 真っ黒(0)はそのまま0を保つので「もやがかかる」ような不自然な浮きが出ない
+  const exponent = 1 - (v/50)*0.6;
+  el('gammaR').setAttribute('exponent', exponent);
+  el('gammaG').setAttribute('exponent', exponent);
+  el('gammaB').setAttribute('exponent', exponent);
   el('v_bright').textContent = v;
   el('s_bright').value = v;
   el('s_bright3').value = v;
