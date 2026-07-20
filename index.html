@@ -38,6 +38,16 @@
   #toastT.show{animation:toastA 2.2s ease-out forwards}
   @keyframes toastA{0%{opacity:0;transform:translateY(-8px)}12%{opacity:1;transform:translateY(0)}82%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
   #vignette{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px rgba(0,0,0,.9);transition:opacity .3s}
+  #brightOverlay{position:fixed;inset:0;z-index:4;pointer-events:none;background:#fff;mix-blend-mode:screen;opacity:0}
+  #brightCalib{position:fixed;left:0;right:0;bottom:0;z-index:21;display:flex;justify-content:center;padding:14px;pointer-events:none}
+  #brightCalib .bcCard{pointer-events:auto;width:min(92vw,420px);background:rgba(16,20,26,.92);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;text-align:center;backdrop-filter:blur(8px);box-shadow:0 10px 30px rgba(0,0,0,.55)}
+  #brightCalib .bcTitle{font-size:14px;font-weight:900}
+  #brightCalib .bcSub{font-size:11px;opacity:.75;margin:4px 0 10px;font-weight:700;line-height:1.6}
+  #brightCalib input[type=range]{width:100%}
+  #brightCalib .btn{margin-top:10px;padding:8px 0;font-size:14px}
+  .sliderTickWrap{position:relative}
+  .sliderTickWrap .tick{position:absolute;top:50%;width:2px;height:14px;margin-top:-7px;background:rgba(255,255,255,.5);pointer-events:none}
+  .sliderTickWrap .tickLabel{position:absolute;top:-14px;transform:translateX(-50%);font-size:9px;font-weight:900;color:rgba(255,255,255,.6);pointer-events:none;white-space:nowrap}
   .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 32%,rgba(40,32,66,.55),rgba(6,8,14,.95));backdrop-filter:blur(3px);padding:16px}
   .card{width:min(94vw,460px);max-height:92vh;overflow:auto;background:linear-gradient(160deg,#181b2c,#0e1018);border:1px solid rgba(255,255,255,.09);border-radius:22px;padding:26px 22px;text-align:center;box-shadow:0 30px 70px rgba(0,0,0,.6)}
   .logo{font-size:32px;font-weight:900;line-height:1.15}
@@ -92,6 +102,7 @@
 </head>
 <body>
 <div id="app"></div>
+<div id="brightOverlay"></div>
 <button id="menuBtn" class="hidden">☰</button>
 <button id="dbgBtn" class="hidden">⚙</button>
 <div id="top" class="hud hidden">
@@ -113,6 +124,9 @@
 
 <div id="dbg" class="hidden">
   <b>⚙ デバッグパネル</b>
+  <label>画面の明るさ <span class="dv" id="v_bright"></span>
+    <div class="sliderTickWrap"><input type="range" id="s_bright" min="0" max="50" step="1"><div class="tick" id="t_bright"></div></div>
+  </label>
   <label>傾き感度 <span class="dv" id="v_accel"></span><input type="range" id="s_accel" min="4" max="40" step="0.5"></label>
   <label>デッドゾーン <span class="dv" id="v_dz"></span><input type="range" id="s_dz" min="0" max="0.25" step="0.01"></label>
   <label>摩擦 <span class="dv" id="v_damp"></span><input type="range" id="s_damp" min="1" max="8" step="0.1"></label>
@@ -126,6 +140,19 @@
   <div style="margin-top:8px;opacity:.85">生値: <span id="v_raw">-</span></div>
   <div style="opacity:.85">速度: <span id="v_speed">-</span> セル: <span id="v_cell">-</span></div>
   <div style="opacity:.85">FPS: <span id="v_fps">-</span></div>
+</div>
+
+<div id="brightCalib" class="hidden">
+  <div class="bcCard">
+    <div class="bcTitle">💡 画面の明るさ調整</div>
+    <div class="bcSub">この画面（実際のゲーム映像）を見ながら、見やすい明るさに合わせてください</div>
+    <div class="sliderTickWrap" style="margin-top:16px">
+      <input type="range" id="s_bright3" min="0" max="50" step="1">
+      <div class="tick" id="t_bright3"></div>
+      <div class="tickLabel" id="tl_bright3">標準</div>
+    </div>
+    <button class="btn" id="bcOkBtn">OK（あとから⚙でも調整できます）</button>
+  </div>
 </div>
 
 <div id="start" class="overlay">
@@ -211,7 +238,7 @@ import * as THREE from 'three';
    S1. 定数（調整値は必ずここに集約。マジックナンバー禁止）
    ========================================================================= */
 const T = { WALL:0, FLOOR:1, HOLE:2, STAIR_UP:3, STAIR_DOWN:4, EXIT:5,
-            ICE:6, SAND:7, CRACK:8, GRATE:9, DOOR_LOCK:10, DOOR_ONEWAY:11 };
+            ICE:6, SAND:7, CRACK:8, GRATE:9, DOOR_LOCK:10, DOOR_ONEWAY:11, WIND:12 };
 const DIRS4 = [[1,0],[-1,0],[0,1],[0,-1]];
 
 const TUNE = {
@@ -223,18 +250,31 @@ const TUNE = {
   nudgeWait:1.0, nudgeInterval:0.35, nudgeDist:0.3, nudgeStopV:0.05,
   stickRadius:70,
   invX:1, invY:1, swapXY:false,
+  windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
+  openCamH:2.2, openCamD:3.0, openCamTurnLerp:5, openWallH:3.4, // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
+  // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
+  enemySpeed:2.2, enemyAccel:6, enemyDamp:3.0,
+  enemyNoticeR:5.0, enemyDecisionInterval:1.4,
+  enemyContactR:0.62, enemyHitCooldown:1.8, enemyDrain:0.9,
+  charmTriggerR:1.7, charmFleeDur:3.0,
 };
 const GEN = {
   floorHeight:3.0, braidRate:0.12, maxRetry:40,
   roomsPerFloor:3, holesPerFloor:2, gratesPerFloor:5,
-  icePatches:2, sandPatches:1, cracksPerFloor:2,
+  icePatches:2, sandPatches:1, windPatches:1, cracksPerFloor:2,
   orbsPerFloor:6, torchesPerFloor:8, chestsPerTower:2,
+  cursedChestChance:0.16, // 無限の塔: 3階以降、床アイテム抽選のたびにこの確率で出現
+  charmChance:0.14, // 無限の塔: 3階以降、床アイテム抽選のたびにこの確率で「鈴のお守り」が出現
+  // 月夜の迷宮(N=61、面積は「巨大」の約4倍): 単層の広大な迷路用の個数。要調整前提の初期値
+  openIce:6, openSand:4, openWind:4, openGrates:18,
+  openOrbs:26, openTorches:30, openChests:5, openSteles:5,
 };
 const SIZES = {
   small:{label:'こじんまり', sub:'7×7 / 2階', N:15, floors:2, compartmentFloors:[0]},
   std:  {label:'標準',       sub:'10×10 / 3階', N:21, floors:3, compartmentFloors:[0]},
   big:  {label:'巨大',       sub:'15×15 / 4階', N:31, floors:4, compartmentFloors:[0,1]},
   endless:{label:'無限の塔', sub:'∞F / 挑戦', N:15, floors:1, compartmentFloors:[], endless:true},
+  abyss:{label:'月夜の迷宮', sub:'61×61 / 星空', N:61, floors:1, compartmentFloors:[], open:true},
 };
 
 /* 加護（無限の塔: 新しい階に到達するたび3択から1つ授かる） */
@@ -632,11 +672,13 @@ function tryBuildTower(rng, cfg, seed){
     }
   }
 
-  // --- 氷床・砂だまり ---
+  // --- 氷床・砂だまり・風ゾーン ---
   for(let f=0; f<F; f++){
     const fl = floors[f];
     placePatch(fl, N, rng, GEN.icePatches, T.ICE, reserved[f]);
     placePatch(fl, N, rng, GEN.sandPatches, T.SAND, reserved[f]);
+    placePatch(fl, N, rng, GEN.windPatches, T.WIND, reserved[f]);
+    { const wd = pick(DIRS4, rng); fl.windDir = {dx:wd[0], dy:wd[1]}; } // 風ゾーンが未生成でも無害（参照されないだけ）
   }
 
   // --- ひび割れ床 ---
@@ -875,7 +917,7 @@ function genEndlessFloor(seed, f, N, prevUp){
   for(let attempt=0; attempt<40; attempt++){
     const rng = mulberry32((seed + f*7919 + attempt*104729) >>> 0);
     const fl = genFloor(rng, N);
-    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set();
+    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set(); fl.enemies=[];
     fl.stairUp=null; fl.stairDown=null; fl.exit=null; fl.doorLock=null; fl.start=null;
     const reserved = new Set();
     // 入口（1階はランダム、以降は下の階の上り階段と同座標）
@@ -908,6 +950,9 @@ function genEndlessFloor(seed, f, N, prevUp){
     for(let i=0;i<cracksN && hi<hz.length;i++,hi++){ fl.tiles[idx(N,hz[hi].x,hz[hi].y)]=T.CRACK; reserved.add(key2(hz[hi].x,hz[hi].y)); }
     placePatch(fl, N, rng, iceN, T.ICE, reserved);
     placePatch(fl, N, rng, sandN, T.SAND, reserved);
+    const windN = f>=2 ? 1 : 0;
+    placePatch(fl, N, rng, windN, T.WIND, reserved);
+    { const wd = pick(DIRS4, rng); fl.windDir = {dx:wd[0], dy:wd[1]}; }
     // 検証: 入口から上り階段へ穴・ひびなしで到達できること
     const reach = endlessReach(fl, N, entry);
     if(!reach[idx(N,stair.x,stair.y)]) continue;
@@ -923,6 +968,21 @@ function genEndlessFloor(seed, f, N, prevUp){
       fl.items.push({kind:'orb', x:pool[pi].x, y:pool[pi].y, taken:false, star:false});
     if((f%4===3 || rng()<0.25) && pi<pool.length){
       fl.items.push({kind:'fragment', x:pool[pi].x, y:pool[pi].y, taken:false}); pi++;
+    }
+    if(f>=2 && rng()<GEN.cursedChestChance && pi<pool.length){
+      fl.items.push({kind:'chest', x:pool[pi].x, y:pool[pi].y, taken:false, content:'cursed'}); pi++;
+    }
+    if(f>=3 && rng()<GEN.charmChance && pi<pool.length){
+      fl.items.push({kind:'charm', x:pool[pi].x, y:pool[pi].y, taken:false}); pi++;
+    }
+    // 徘徊する敵: 3階以降、入口から離れたセルに配置（到達性検証には影響しない＝壁ではなくただの移動オブジェクト）
+    const enemiesN = f<3 ? 0 : Math.min(3, 1+Math.floor((f-3)/5));
+    if(enemiesN>0){
+      const enemyCand = pool.slice(pi).filter(c=> cellDist(c,entry)>=4);
+      for(let i=0;i<enemiesN && i<enemyCand.length;i++){
+        const c = enemyCand[i];
+        fl.enemies.push({x:c.x+0.5, z:c.y+0.5, vx:0, vz:0, decisionT:rng()*TUNE.enemyDecisionInterval, dirX:0, dirZ:1, fleeUntil:0, hitCooldown:0, mesh:null});
+      }
     }
     const torchSpots=[];
     for(const c of floorTiles){
@@ -944,6 +1004,77 @@ function genEndlessTower(seed, N){
   return { seed, N, floors:[f0], start:f0.start, endless:true, sizeKey:'endless' };
 }
 
+/* ===== 月夜の迷宮: 単層の広大な迷路 =====
+   通常タワーの鍵・施錠扉・羅針盤（金庫部屋は多層前提）は使わず、genFloorの迷路コアだけを再利用する。
+   穴・ひびは「落下先のフロア」が無いため生成しない（ノーペナルティ思想と矛盾する代替ペナルティを避けるため）。 */
+function genOpenTower(seed, N){
+  for(let attempt=0; attempt<GEN.maxRetry; attempt++){
+    const rng = mulberry32((seed + attempt*7919) >>> 0);
+    const fl = genFloor(rng, N);
+    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set();
+    fl.stairUp=null; fl.stairDown=null; fl.doorLock=null; fl.start=null; fl.exit=null;
+    const reserved = new Set();
+    const cn=(N-1)/2, cells=[];
+    for(let cy=0;cy<cn;cy++)for(let cx=0;cx<cn;cx++) cells.push({x:2*cx+1,y:2*cy+1});
+    const start = pick(shuffled(cells, rng), rng);
+    fl.start = start;
+    reserved.add(key2(start.x,start.y));
+
+    // 出口: スタートから十分遠い行き止まりを選ぶ
+    const cand = fl.deadEnds.filter(d=> !reserved.has(key2(d.x,d.y)));
+    if(!cand.length) continue;
+    const far = cand.filter(d=> cellDist(d,start) >= N/2.2);
+    const exitCell = pick(shuffled(far.length?far:cand, rng), rng);
+    fl.exit = {x:exitCell.x, y:exitCell.y};
+    fl.tiles[idx(N,exitCell.x,exitCell.y)] = T.EXIT;
+    reserved.add(key2(exitCell.x,exitCell.y));
+
+    // ハザード: 氷・砂・風・格子
+    placePatch(fl, N, rng, GEN.openIce, T.ICE, reserved);
+    placePatch(fl, N, rng, GEN.openSand, T.SAND, reserved);
+    placePatch(fl, N, rng, GEN.openWind, T.WIND, reserved);
+    { const wd = pick(DIRS4, rng); fl.windDir = {dx:wd[0], dy:wd[1]}; }
+    {
+      const cellsAll=[];
+      for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++) cellsAll.push({x,y});
+      const gcand = shuffled(cellsAll, rng).filter(c=> fl.tiles[idx(N,c.x,c.y)]===T.FLOOR && !reserved.has(key2(c.x,c.y)));
+      for(let i=0;i<GEN.openGrates && i<gcand.length;i++) fl.tiles[idx(N,gcand[i].x,gcand[i].y)] = T.GRATE;
+    }
+
+    // 検証: スタートから出口へ到達できること（壁・穴・ひびを避けたBFS。このモードは穴・ひび自体を生成しないので実質は壁のみ）
+    const reach = endlessReach(fl, N, start);
+    if(!reach[idx(N,exitCell.x,exitCell.y)]) continue;
+
+    // アイテム: 到達可能セルにのみ配置（灯り玉・宝箱・石碑・松明）
+    const floorTiles=[];
+    for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){
+      if(fl.tiles[idx(N,x,y)]===T.FLOOR && reach[idx(N,x,y)] && !reserved.has(key2(x,y))) floorTiles.push({x,y});
+    }
+    const pool = shuffled(floorTiles, rng);
+    let pi=0;
+    for(let i=0;i<GEN.openOrbs && pi<pool.length;i++,pi++)
+      fl.items.push({kind:'orb', x:pool[pi].x, y:pool[pi].y, taken:false, star:false});
+    for(let i=0;i<GEN.openChests && pi<pool.length;i++,pi++)
+      fl.items.push({kind:'chest', x:pool[pi].x, y:pool[pi].y, taken:false, content:'orbs'}); // 羅針盤は月ナビゲーションと矛盾するため出さない
+    for(let i=0;i<GEN.openSteles && pi<pool.length;i++,pi++)
+      fl.items.push({kind:'stele', x:pool[pi].x, y:pool[pi].y, taken:false, registered:false});
+    const torchSpots=[];
+    for(const c of floorTiles){
+      const wallDirs = DIRS4.filter(([dx,dy])=> inb(N,c.x+dx,c.y+dy) && fl.tiles[idx(N,c.x+dx,c.y+dy)]===T.WALL);
+      if(wallDirs.length) torchSpots.push({x:c.x, y:c.y, wallDirs});
+    }
+    const tp = shuffled(torchSpots, rng);
+    for(let i=0;i<GEN.openTorches && i<tp.length;i++){
+      const spot=tp[i]; const [wdx,wdy]=pick(spot.wallDirs, rng);
+      fl.items.push({kind:'torch', x:spot.x, y:spot.y, wdx, wdy, taken:false});
+    }
+
+    fl.moonAngle = rng()*Math.PI*2; // このシードでの月の方角（固定）
+    return { seed, N, floors:[fl], start, open:true, sizeKey:'abyss' };
+  }
+  return null;
+}
+
 /* =========================================================================
    ここから先はブラウザ実行専用（THREE / DOM / センサー等）
    ========================================================================= */
@@ -952,6 +1083,8 @@ function genEndlessTower(seed, N){
 let tower = null, sizeKey = 'std', mode = null;
 let scene, camera, renderer;
 let floorGroups = [];
+let camHeading = 0; // 月夜の迷宮: 進行方向追従カメラの平滑化された方位角
+let skyGroup = null; // 月夜の迷宮: 夜空ドーム＋月（モード切替時に作り直す）
 let ballMesh, ballLight, flashT = 0;
 let torchLightPool = [], torchAssignT = 0;
 let distField = null;
@@ -976,7 +1109,7 @@ function initThree(){
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 3.5, 10);
-  camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.1, 60);
+  camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.1, 350); // 350: 月夜の迷宮の夜空ドーム(半径300)が視錐台に収まるように拡張
   renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   renderer.setSize(innerWidth, innerHeight);
@@ -1018,6 +1151,42 @@ function makeBallTexture(){
   return tex;
 }
 const BALL_TEX = makeBallTexture();
+// 月夜の迷宮用の夜空テクスチャ（手続き生成: 縦グラデーションのみ）。
+// 半径300の天球を内側から間近で見るため、テクスチャの1テクセルが画面上で数十pxに拡大されてしまう
+// （星のような小さい点をテクスチャに描くと巨大なぼやけた矩形になる）。なので細かい星は
+// テクスチャではなくTHREE.Points（sizeAttenuation:false=画面上で常に一定px）で別途描く。
+function makeSkyTexture(){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const x = cv.getContext('2d');
+  const grad = x.createLinearGradient(0,0,0,64);
+  grad.addColorStop(0, '#05060f');
+  grad.addColorStop(0.55, '#0a0f24');
+  grad.addColorStop(1, '#161233');
+  x.fillStyle = grad; x.fillRect(0,0,64,64);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const SKY_TEX = makeSkyTexture();
+// 星: 天球のすぐ内側(半径290)の上半球にランダム配置した点群。sizeAttenuationをoffにして
+// 距離に関係なく画面上で常に同じ小さいpxサイズになるようにする（テクセル拡大によるボケを回避）
+function makeStarField(){
+  const N = 260;
+  const positions = new Float32Array(N*3);
+  const rnd = mulberry32(0x51A2C0FF);
+  for(let i=0;i<N;i++){
+    const theta = rnd()*Math.PI*2;
+    const phi = Math.acos(rnd()); // [0, π/2]: 天頂〜地平線の上半球に一様分布
+    const r = 290;
+    positions[i*3]   = r*Math.sin(phi)*Math.cos(theta);
+    positions[i*3+1] = r*Math.cos(phi);
+    positions[i*3+2] = r*Math.sin(phi)*Math.sin(theta);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({color:0xfffbe8, size:2.2, sizeAttenuation:false, transparent:true, opacity:0.85, fog:false, depthWrite:false});
+  return new THREE.Points(geo, mat);
+}
 const MAT = {
   wall: new THREE.MeshStandardMaterial({color:0x5a5248, roughness:0.95}),
   floor: new THREE.MeshStandardMaterial({color:0x3a362f, roughness:0.95}),
@@ -1025,7 +1194,11 @@ const MAT = {
   sand: new THREE.MeshStandardMaterial({color:0xc9a86a, roughness:1}),
   crack: new THREE.MeshStandardMaterial({color:0x4a4030, roughness:1}),
   grate: new THREE.MeshStandardMaterial({color:0x777777, roughness:0.5, metalness:0.6}),
+  wind: new THREE.MeshStandardMaterial({color:0x9fb8c0, roughness:0.6, transparent:true, opacity:0.55}),
+  windMark: new THREE.MeshBasicMaterial({color:0xdff3ff, transparent:true, opacity:0.5}),
   stair: new THREE.MeshStandardMaterial({color:0x8a6a3a, roughness:0.8}),
+  stairUp: new THREE.MeshStandardMaterial({color:0x8fe8d0, emissive:0x52e0c0, emissiveIntensity:1.0, roughness:0.4}),
+  stairBeam: new THREE.MeshBasicMaterial({color:0x6cf0d2, transparent:true, opacity:0.22, depthWrite:false}),
   exit: new THREE.MeshStandardMaterial({color:0xffe9b0, emissive:0xffb84a, emissiveIntensity:0.8, roughness:0.5}),
   doorLock: new THREE.MeshStandardMaterial({color:0x6a5a4a, roughness:0.9}),
   doorOneway: new THREE.MeshStandardMaterial({color:0x4a5a6a, roughness:0.9}),
@@ -1035,12 +1208,22 @@ const MAT = {
   key: new THREE.MeshStandardMaterial({color:0xffe066, metalness:0.5, roughness:0.4, emissive:0x8a6a10, emissiveIntensity:0.3}),
   chest: new THREE.MeshStandardMaterial({color:0x8a5a2a, roughness:0.85}),
   chestBand: new THREE.MeshStandardMaterial({color:0xc9a03a, metalness:0.5, roughness:0.4}),
+  chestCursed: new THREE.MeshStandardMaterial({color:0x241428, roughness:0.7, emissive:0x6a1ecc, emissiveIntensity:0.5}),
+  chestCursedBand: new THREE.MeshStandardMaterial({color:0x1a0f22, metalness:0.3, roughness:0.6, emissive:0x9a3ee0, emissiveIntensity:0.8}),
   stele: new THREE.MeshStandardMaterial({color:0x6a7a8a, roughness:0.8}),
   fragment: new THREE.MeshStandardMaterial({color:0x9fd8ff, emissive:0x4aa0e8, emissiveIntensity:1.0, roughness:0.4}),
+  charm: new THREE.MeshStandardMaterial({color:0xd8b04a, metalness:0.6, roughness:0.35, emissive:0x8a5a10, emissiveIntensity:0.4}),
+  enemyBody: new THREE.MeshStandardMaterial({color:0x241a2e, roughness:0.95}),
+  enemyEye: new THREE.MeshBasicMaterial({color:0xff3050, fog:false}),
   ball: new THREE.MeshStandardMaterial({color:0xffffff, map:BALL_TEX, emissive:0xffc078, emissiveMap:BALL_TEX, emissiveIntensity:1.3, roughness:0.35}),
+  sky: new THREE.MeshBasicMaterial({map:SKY_TEX, side:THREE.BackSide, fog:false, depthWrite:false}),
+  moon: new THREE.MeshBasicMaterial({color:0xfef6e0, fog:false}),
+  moonGlow: new THREE.MeshBasicMaterial({color:0xfef6e0, transparent:true, opacity:0.22, fog:false, depthWrite:false}),
 };
 const GEO3 = {
   wallBox: new THREE.BoxGeometry(1, 1.4, 1),
+  wallBoxTall: new THREE.BoxGeometry(1, TUNE.openWallH, 1), // 月夜の迷宮専用: 高い壁
+  skyDome: new THREE.SphereGeometry(300, 64, 40), // セグメント数が粗いと星のテクセルが1面に引き伸ばされてぼやけた矩形になるため多めに
   floorBox: new THREE.BoxGeometry(1, 0.12, 1),
   sph: new THREE.SphereGeometry(0.5, 16, 12),
   sphLo: new THREE.SphereGeometry(0.5, 8, 6),
@@ -1078,6 +1261,25 @@ function makeGrateMesh(x,y){
   }
   return g;
 }
+function updateAmbientPulses(now){
+  // 共有マテリアルの明滅を毎フレーム更新するだけで、同じ見た目のメッシュ全部に一括で反映される
+  MAT.stairUp.emissiveIntensity = 0.85 + 0.35*Math.sin(now*0.0021);
+  MAT.chestCursed.emissiveIntensity = 0.5 + 0.3*Math.sin(now*0.0032+1.7);
+  MAT.chestCursedBand.emissiveIntensity = 0.6 + 0.45*Math.sin(now*0.0032+1.7);
+}
+function makeWindMark(x,y,dir){
+  // 風向きを示す細い筋を2本、風向きに沿わせて床に置く（力の向きの目安）
+  const g = new THREE.Group();
+  const ang = Math.atan2(dir.dx, dir.dy);
+  for(let i=0;i<2;i++){
+    const streak = new THREE.Mesh(GEO3.box, MAT.windMark);
+    streak.scale.set(0.05,0.03,0.32);
+    streak.rotation.y = ang;
+    streak.position.set(x+0.5+dir.dx*(i*0.22-0.11), 0.01, y+0.5+dir.dy*(i*0.22-0.11));
+    g.add(streak);
+  }
+  return g;
+}
 function makeHoleRim(x,y,leaking){
   const g = new THREE.Group();
   const mk=(w,d,px,pz)=>{const m=new THREE.Mesh(GEO3.box, MAT.holeRim); m.scale.set(w,0.1,d); m.position.set(px,-0.02,pz); g.add(m);};
@@ -1095,15 +1297,26 @@ function makeHoleRim(x,y,leaking){
 }
 function makeStairMesh(x,y,up){
   const g = new THREE.Group();
-  const plat = new THREE.Mesh(GEO3.box, MAT.stair);
+  const mat = up ? MAT.stairUp : MAT.stair;
+  const plat = new THREE.Mesh(GEO3.box, mat);
   plat.scale.set(0.8,0.1,0.8);
   plat.position.set(x+0.5, 0.02, y+0.5);
   g.add(plat);
-  const arrow = new THREE.Mesh(GEO3.cone, MAT.stair);
-  arrow.scale.set(0.18,0.22,0.18);
-  arrow.position.set(x+0.5, up?0.32:0.18, y+0.5);
+  const arrow = new THREE.Mesh(GEO3.cone, mat);
+  arrow.scale.set(up?0.24:0.18, up?0.3:0.22, up?0.24:0.18);
+  arrow.position.set(x+0.5, up?0.36:0.18, y+0.5);
   if(!up) arrow.rotation.z = Math.PI;
   g.add(arrow);
+  if(up){
+    // 上り階段は「行き先」として遠目にも分かるよう、専用色の光柱＋常夜灯を足す
+    const beam = new THREE.Mesh(GEO3.cyl, MAT.stairBeam);
+    beam.scale.set(0.14,1.8,0.14);
+    beam.position.set(x+0.5, 1.0, y+0.5);
+    g.add(beam);
+    const glow = new THREE.PointLight(0x52e0c0, 0.9, 3.0, 2);
+    glow.position.set(x+0.5, 0.5, y+0.5);
+    g.add(glow);
+  }
   return g;
 }
 function makeDoorLockMesh(x,y,fl){
@@ -1136,15 +1349,31 @@ function buildItemMesh(it, group){
     g.add(shaft);
     g.position.set(it.x+0.5, 0.3, it.y+0.5);
   } else if(it.kind==='chest'){
-    const body = new THREE.Mesh(GEO3.box, MAT.chest);
+    const cursed = it.content==='cursed';
+    const bodyMat = cursed ? MAT.chestCursed : MAT.chest;
+    const bandMat = cursed ? MAT.chestCursedBand : MAT.chestBand;
+    const body = new THREE.Mesh(GEO3.box, bodyMat);
     body.scale.set(0.55,0.35,0.4); body.position.y=0.18;
     g.add(body);
-    const lid = new THREE.Mesh(GEO3.box, MAT.chest);
+    const lid = new THREE.Mesh(GEO3.box, bodyMat);
     lid.scale.set(0.58,0.14,0.42); lid.position.y=0.4;
     g.add(lid);
-    const band = new THREE.Mesh(GEO3.box, MAT.chestBand);
+    const band = new THREE.Mesh(GEO3.box, bandMat);
     band.scale.set(0.58,0.08,0.44); band.position.y=0.3;
     g.add(band);
+    if(cursed){
+      // 禍々しさの演出: 四隅の棘＋紫の常夜灯（見た目だけで「これは危険」と伝える）
+      const spikeCorners = [[-0.22,-0.16],[0.22,-0.16],[-0.22,0.16],[0.22,0.16]];
+      for(const [sx,sz] of spikeCorners){
+        const spike = new THREE.Mesh(GEO3.cone, bandMat);
+        spike.scale.set(0.07,0.16,0.07);
+        spike.position.set(sx,0.52,sz);
+        g.add(spike);
+      }
+      const glow = new THREE.PointLight(0x9a3ee0, 1.0, 2.4, 2);
+      glow.position.set(0,0.4,0);
+      g.add(glow);
+    }
     g.position.set(it.x+0.5, 0, it.y+0.5);
   } else if(it.kind==='stele'){
     const body = new THREE.Mesh(GEO3.box, MAT.stele);
@@ -1181,10 +1410,38 @@ function buildItemMesh(it, group){
     tab.rotation.y = 0.6;
     g.add(tab);
     g.position.set(it.x+0.5, 0, it.y+0.5);
+  } else if(it.kind==='charm'){
+    const bell = new THREE.Mesh(GEO3.cone, MAT.charm);
+    bell.scale.set(0.16,0.2,0.16);
+    bell.rotation.z = Math.PI; // 上下逆さにしてベルの形に
+    bell.position.y = 0.3;
+    g.add(bell);
+    const ring = new THREE.Mesh(GEO3.torus, MAT.charm);
+    ring.scale.setScalar(0.7);
+    ring.position.y = 0.44;
+    g.add(ring);
+    g.position.set(it.x+0.5, 0, it.y+0.5);
   } else {
     g = null;
   }
   if(g){ it.mesh = g; group.add(g); }
+}
+function buildEnemyMesh(en, group){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(GEO3.sph, MAT.enemyBody);
+  body.scale.set(0.42, 0.34, 0.4);
+  g.add(body);
+  const eyeL = new THREE.Mesh(GEO3.sphLo, MAT.enemyEye);
+  eyeL.scale.setScalar(0.045);
+  eyeL.position.set(-0.12, 0.06, 0.32);
+  g.add(eyeL);
+  const eyeR = new THREE.Mesh(GEO3.sphLo, MAT.enemyEye);
+  eyeR.scale.setScalar(0.045);
+  eyeR.position.set(0.12, 0.06, 0.32);
+  g.add(eyeR);
+  g.position.set(en.x, 0.3, en.z);
+  en.mesh = g;
+  group.add(g);
 }
 function buildOneFloorGroup(tw, f){
   const N = tw.N, fl = tw.floors[f];
@@ -1201,15 +1458,19 @@ function buildOneFloorGroup(tw, f){
     else if(t===T.SAND) bucket='sand';
     else if(t===T.CRACK) bucket='crack';
     else if(t===T.EXIT) bucket='exit';
+    else if(t===T.WIND) bucket='wind';
     else bucket='floor';
     (byType[bucket]=byType[bucket]||[]).push([x,y]);
   }
-  addInstanced(group, byType.wall, GEO3.wallBox, MAT.wall, 0.7);
+  if(tw.open) group.userData.wallMesh = addInstanced(group, byType.wall, GEO3.wallBoxTall, MAT.wall, TUNE.openWallH/2);
+  else addInstanced(group, byType.wall, GEO3.wallBox, MAT.wall, 0.7);
   addInstanced(group, byType.floor, GEO3.floorBox, MAT.floor, -0.06);
   addInstanced(group, byType.ice, GEO3.floorBox, MAT.ice, -0.06);
   addInstanced(group, byType.sand, GEO3.floorBox, MAT.sand, -0.06);
   addInstanced(group, byType.crack, GEO3.floorBox, MAT.crack, -0.06);
   addInstanced(group, byType.exit, GEO3.floorBox, MAT.exit, -0.05);
+  addInstanced(group, byType.wind, GEO3.floorBox, MAT.wind, -0.055);
+  if(byType.wind && fl.windDir) for(const [x,y] of byType.wind) group.add(makeWindMark(x,y,fl.windDir));
   if(byType.grate) for(const [x,y] of byType.grate) group.add(makeGrateMesh(x,y));
   if(byType.hole) for(const [x,y] of byType.hole) group.add(makeHoleRim(x,y, fl.leakHoles.has(key2(x,y))));
   if(fl.stairUp) group.add(makeStairMesh(fl.stairUp.x, fl.stairUp.y, true));
@@ -1217,6 +1478,7 @@ function buildOneFloorGroup(tw, f){
   if(fl.doorLock && fl.tiles[idx(N,fl.doorLock.x,fl.doorLock.y)]===T.DOOR_LOCK) group.add(makeDoorLockMesh(fl.doorLock.x, fl.doorLock.y, fl));
   for(const [,info] of fl.onewayAt) group.add(makeDoorOnewayMesh(info));
   for(const it of fl.items) if(!it.taken) buildItemMesh(it, group);
+  if(fl.enemies) for(const en of fl.enemies) buildEnemyMesh(en, group);
   return group;
 }
 function buildFloorMeshes(tw){
@@ -1238,6 +1500,24 @@ function rebuildFloorGroup(f){
 }
 function updateFloorVisibility(){
   for(let f=0; f<floorGroups.length; f++) floorGroups[f].visible = (f===state.f || f===state.f-1);
+}
+// 月夜の迷宮: 夜空ドーム＋月。moonAngleがnullなら前回分を消すだけ（他モードへ切り替えた時の後始末）
+function setOpenSky(moonAngle){
+  if(skyGroup){ scene.remove(skyGroup); skyGroup = null; }
+  if(moonAngle==null) return;
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(GEO3.skyDome, MAT.sky));
+  g.add(makeStarField());
+  const dist = 280, my = 55; // 高すぎると視錐台の上限を超えて見えなくなる上、月に向かって正面から歩く場面ではHUDバッジの裏に隠れやすいので低めに
+  const mx = dist*Math.sin(moonAngle), mz = dist*Math.cos(moonAngle);
+  const glow = new THREE.Mesh(GEO3.sphLo, MAT.moonGlow);
+  glow.scale.setScalar(34); glow.position.set(mx,my,mz);
+  g.add(glow);
+  const moon = new THREE.Mesh(GEO3.sphLo, MAT.moon);
+  moon.scale.setScalar(16); moon.position.set(mx,my,mz);
+  g.add(moon);
+  scene.add(g);
+  skyGroup = g;
 }
 
 /* ===== ボール・光源 ===== */
@@ -1286,10 +1566,10 @@ const _rollAxis = new THREE.Vector3(), _rollQ = new THREE.Quaternion();
 function updateBallMesh(dt){
   const y = currentWorldY() + TUNE.ballR;
   ballMesh.position.set(ball.x, y, ball.z);
-  // 転がり回転: 滑りなし条件 ω=(v×up)/r → 回転軸(-vz,0,vx)
+  // 転がり回転: 滑りなし条件（接地点の速度がゼロ）ω=(up×v)/r → 回転軸(vz,0,-vx)
   const sp = Math.hypot(ball.vx, ball.vz);
   if(sp > 0.01){
-    _rollAxis.set(-ball.vz, 0, ball.vx).normalize();
+    _rollAxis.set(ball.vz, 0, -ball.vx).normalize();
     _rollQ.setFromAxisAngle(_rollAxis, sp*dt/TUNE.ballR);
     ballMesh.quaternion.premultiply(_rollQ);
   }
@@ -1301,8 +1581,46 @@ function updateBallMesh(dt){
   // 下限9.5: カメラ〜ボール距離(≈8.6)を下回ると画面全体が暗転してしまう（無限の塔の低光量時）
   scene.fog.far = Math.max(9.5, ball.lightR*2.4);
 }
+const _camRaycaster = new THREE.Raycaster();
+const _camPivot = new THREE.Vector3(), _camDir = new THREE.Vector3();
+// カメラの壁めり込み防止（スプリングアーム方式）: 注視点からカメラ希望位置へレイを飛ばし、
+// 壁に当たったらその手前までカメラを引き寄せる。3人称カメラで一般的に使われる手法
+function cameraSafeDist(px,py,pz, dx,dy,dz, maxDist){
+  const wallMesh = floorGroups[state.f] && floorGroups[state.f].userData.wallMesh;
+  if(!wallMesh || maxDist<=0) return maxDist;
+  _camPivot.set(px,py,pz);
+  _camDir.set(dx,dy,dz);
+  _camRaycaster.set(_camPivot, _camDir);
+  _camRaycaster.far = maxDist;
+  _camRaycaster.near = 0;
+  const hits = _camRaycaster.intersectObject(wallMesh, false);
+  if(hits.length) return Math.max(0.5, hits[0].distance - 0.3);
+  return maxDist;
+}
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
+  if(tower && tower.open){
+    // 月夜の迷宮: 俯瞰をやめ、進行方向の後方から追従する近距離三人称視点
+    const speed = Math.hypot(ball.vx, ball.vz);
+    if(speed > 0.3){
+      const desired = Math.atan2(ball.vx, ball.vz);
+      let dh = desired - camHeading;
+      dh = ((dh + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // 最短方向に正規化
+      camHeading += dh * (1-Math.exp(-TUNE.openCamTurnLerp*dt));
+    }
+    const dirX = Math.sin(camHeading), dirZ = Math.cos(camHeading);
+    const eyeY = y + TUNE.openCamH;
+    const safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
+    const target = new THREE.Vector3(ball.x - dirX*safeDist, eyeY, ball.z - dirZ*safeDist);
+    // 壁に押されて手前に引き寄せる時は素早く（めり込みを見せない）、離れる時は普段どおり滑らかに戻す
+    const curDist = Math.hypot(camera.position.x-ball.x, camera.position.y-eyeY, camera.position.z-ball.z);
+    const lerpSpeed = safeDist < curDist-0.05 ? 20 : TUNE.camLerp;
+    camera.position.lerp(target, 1-Math.exp(-lerpSpeed*dt));
+    // ボールの手前ではなく進行方向のずっと先・ほぼ同じ高さを見ることでピッチをほぼ水平にする
+    // （見下ろす角度が付くと視錐台が地面側に寄り、高い壁の上に頭上の夜空・月が入らなくなるため）
+    camera.lookAt(ball.x + dirX*3, y+TUNE.openCamH-0.4, ball.z + dirZ*3);
+    return;
+  }
   const target = new THREE.Vector3(ball.x, y+TUNE.camH, ball.z+TUNE.camD);
   camera.position.lerp(target, 1-Math.exp(-TUNE.camLerp*dt));
   camera.lookAt(ball.x, y, ball.z);
@@ -1414,18 +1732,33 @@ function pickupItem(it, fl){
     beep(520,0.1,'triangle'); setTimeout(()=>beep(780,0.15,'triangle'),90);
     updateInv();
   } else if(it.kind==='chest'){
-    beep(600,0.1,'square'); setTimeout(()=>beep(900,0.15,'triangle'),100);
-    if(it.content==='compass'){
-      state.hasCompass = true;
-      showPickup('🧭','古の羅針盤','止まっていると出口の方角へ導いてくれる');
-      invalidateDistField();
-      updateInv();
-    } else {
-      state.orbs += 5;
-      ball.lightR = Math.min(maxLight(), ball.lightR + TUNE.orbLightGain*2);
-      showPickup('✨','灯り玉×5','光がひとまわり大きくなった');
+    if(it.content==='cursed'){
+      // 呪われた宝箱: 加護を1つ授かる代わりに、開けた瞬間に光を吸われる（無限の塔限定のハイリスク報酬）
+      beep(110,0.3,'sawtooth',0.18); setTimeout(()=>beep(80,0.4,'sawtooth',0.15),120);
+      spawnPuff(it.x+0.5, state.f*GEN.floorHeight, it.y+0.5, 0x9a3ee0);
+      ball.lightR = Math.min(ball.lightR, Math.max(TUNE.lightMin+0.4, ball.lightR - TUNE.cursedDrain));
+      showPickup('💀','呪われた宝箱','禍々しい力が宿っている…光が吸われた');
       updateHUD();
+      setTimeout(openDraft, 550);
+    } else {
+      beep(600,0.1,'square'); setTimeout(()=>beep(900,0.15,'triangle'),100);
+      if(it.content==='compass'){
+        state.hasCompass = true;
+        showPickup('🧭','古の羅針盤','止まっていると出口の方角へ導いてくれる');
+        invalidateDistField();
+        updateInv();
+      } else {
+        state.orbs += 5;
+        ball.lightR = Math.min(maxLight(), ball.lightR + TUNE.orbLightGain*2);
+        showPickup('✨','灯り玉×5','光がひとまわり大きくなった');
+        updateHUD();
+      }
     }
+  } else if(it.kind==='charm'){
+    state.charms = (state.charms||0)+1;
+    showPickup('🔔','鈴のお守り','敵が近づくと自動で鳴り、怯ませて追い払う');
+    beep(700,0.1,'triangle'); setTimeout(()=>beep(1000,0.15,'triangle'),100);
+    updateInv();
   }
 }
 function updateTileTriggers(){
@@ -1470,6 +1803,63 @@ function updateTileTriggers(){
     if(Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5)) < rr) pickupItem(it, fl);
   }
 }
+// 無限の塔: 徘徊する敵のAI・移動・接触判定。moveAndCollide/isSolidTileはボールと共用
+function updateEnemies(dt){
+  const fl = tower.floors[state.f];
+  if(!fl.enemies || !fl.enemies.length) return;
+  const now = performance.now();
+  for(const en of fl.enemies){
+    en.hitCooldown = Math.max(0, en.hitCooldown - dt);
+    en.decisionT -= dt;
+    if(en.decisionT <= 0){
+      en.decisionT = TUNE.enemyDecisionInterval * (0.8 + Math.random()*0.4);
+      const toBallX = ball.x-en.x, toBallZ = ball.z-en.z;
+      const distToBall = Math.hypot(toBallX, toBallZ);
+      if(en.fleeUntil > now){
+        const len = distToBall || 1;
+        en.dirX = -toBallX/len; en.dirZ = -toBallZ/len;
+      } else if(distToBall < TUNE.enemyNoticeR){
+        const len = distToBall || 1;
+        en.dirX = toBallX/len; en.dirZ = toBallZ/len;
+      } else {
+        const cx = Math.floor(en.x), cz = Math.floor(en.z);
+        const openDirs = DIRS4.filter(([dx,dy])=> !isSolidTile(state.f, cx+dx, cz+dy, null));
+        if(openDirs.length){
+          const [dx,dy] = pick(openDirs, Math.random);
+          en.dirX = dx; en.dirZ = dy;
+        }
+      }
+    }
+    en.vx += en.dirX * TUNE.enemyAccel * dt;
+    en.vz += en.dirZ * TUNE.enemyAccel * dt;
+    en.vx *= Math.exp(-TUNE.enemyDamp*dt);
+    en.vz *= Math.exp(-TUNE.enemyDamp*dt);
+    const spd = Math.hypot(en.vx, en.vz);
+    if(spd > TUNE.enemySpeed){ en.vx *= TUNE.enemySpeed/spd; en.vz *= TUNE.enemySpeed/spd; }
+    const cellBefore = {x:Math.floor(en.x), y:Math.floor(en.z)};
+    moveAndCollide(en, dt, cellBefore);
+    if(en.mesh){
+      en.mesh.position.set(en.x, 0.3, en.z);
+      if(spd > 0.05) en.mesh.rotation.y = Math.atan2(en.vx, en.vz);
+    }
+    const dToBall = Math.hypot(ball.x-en.x, ball.z-en.z);
+    if(dToBall < TUNE.charmTriggerR && state.charms>0 && en.fleeUntil<=now){
+      state.charms--;
+      for(const e2 of fl.enemies) e2.fleeUntil = now + TUNE.charmFleeDur*1000;
+      toast('🔔 お守りが鳴り、敵が怯んで逃げた！');
+      beep(880,0.12,'triangle'); setTimeout(()=>beep(1320,0.15,'triangle'),90);
+      updateInv();
+    } else if(dToBall < TUNE.enemyContactR && en.hitCooldown<=0){
+      en.hitCooldown = TUNE.enemyHitCooldown;
+      ball.lightR = Math.min(ball.lightR, Math.max(TUNE.lightMin+0.4, ball.lightR - TUNE.enemyDrain));
+      const kx=(ball.x-en.x)||0.01, kz=(ball.z-en.z)||0.01, kl=Math.hypot(kx,kz);
+      ball.vx += kx/kl*3; ball.vz += kz/kl*3;
+      beep(90,0.25,'sawtooth',0.2);
+      toast('敵に触れた…光が吸われた！');
+      updateHUD();
+    }
+  }
+}
 function physicsStep(dt){
   smTiltX = lerp(smTiltX, rawTiltX, 1-Math.exp(-TUNE.tiltSmooth*dt));
   smTiltY = lerp(smTiltY, rawTiltY, 1-Math.exp(-TUNE.tiltSmooth*dt));
@@ -1477,13 +1867,18 @@ function physicsStep(dt){
 
   const cellBefore = {x:Math.floor(ball.x), y:Math.floor(ball.z)};
   const curTile = tileAt(state.f, cellBefore.x, cellBefore.y);
-  const onIce = curTile===T.ICE, onSand = curTile===T.SAND;
+  const onIce = curTile===T.ICE, onSand = curTile===T.SAND, onWind = curTile===T.WIND;
   const bl = state.blessings;
   const damp = onIce? (bl.iceshoe? 2.2 : TUNE.dampIce) : onSand? (bl.dune? TUNE.damp : TUNE.dampSand) : TUNE.damp;
   const accelMul = (onSand && !bl.dune? 0.5 : 1) * Math.pow(1.15, bl.swift||0);
 
   ball.vx += dz.x * TUNE.accel * accelMul * dt;
   ball.vz += dz.y * TUNE.accel * accelMul * dt;
+  if(onWind){
+    const wd = tower.floors[state.f].windDir;
+    ball.vx += wd.dx * TUNE.windAccel * dt;
+    ball.vz += wd.dy * TUNE.windAccel * dt;
+  }
   ball.vx *= Math.exp(-damp*dt);
   ball.vz *= Math.exp(-damp*dt);
 
@@ -1498,6 +1893,7 @@ function physicsStep(dt){
 
   // 無限の塔: 光＝命。時間とともに光が縮み、尽きるとラン終了
   if(tower.endless && state.phase==='play'){
+    updateEnemies(dt);
     const prevL = ball.lightR;
     ball.lightR -= lightDecayRate()*dt;
     if(prevL>2.2 && ball.lightR<=2.2) beep(220,0.35,'sine',0.2); // 残りわずか警告
@@ -1857,7 +2253,9 @@ function buildSizeRow(){
 function startGame(newSeed){
   const seedToUse = newSeed!=null ? newSeed : Math.floor(Math.random()*1e6);
   const cfg = SIZES[sizeKey];
-  const built = cfg.endless ? genEndlessTower(seedToUse, cfg.N) : genTower(seedToUse, sizeKey);
+  const built = cfg.endless ? genEndlessTower(seedToUse, cfg.N)
+              : cfg.open ? genOpenTower(seedToUse, cfg.N)
+              : genTower(seedToUse, sizeKey);
   if(!built){
     toast('生成に失敗しました。もう一度お試しください');
     return false;
@@ -1865,8 +2263,9 @@ function startGame(newSeed){
   tower = built;
   for(const g of floorGroups) scene.remove(g);
   floorGroups = buildFloorMeshes(tower);
+  setOpenSky(tower.open ? tower.floors[0].moonAngle : null);
   state.phase='play'; state.f=0;
-  state.orbs=0; state.hasKey=false; state.hasCompass=false;
+  state.orbs=0; state.hasKey=false; state.hasCompass=false; state.charms=0;
   state.checkpoint=null; state.timeMs=0; state.prevCell=null; state.stairArmed=true;
   state.nudge={stillT:0,kicking:false,kickIdx:0,kickT:0};
   state.blessings={}; state.maxF=0; state.fragRun=0;
@@ -1875,10 +2274,18 @@ function startGame(newSeed){
   distField=null; comboN=0; comboT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
-  camera.position.set(ball.x, y0+TUNE.camH, ball.z+TUNE.camD);
-  camera.lookAt(ball.x, y0, ball.z);
+  camHeading = 0;
+  if(tower.open){
+    const eyeY0 = y0+TUNE.openCamH;
+    const safeDist0 = cameraSafeDist(ball.x, eyeY0, ball.z, 0, 0, -1, TUNE.openCamD);
+    camera.position.set(ball.x, eyeY0, ball.z-safeDist0);
+    camera.lookAt(ball.x, eyeY0-0.4, ball.z+3);
+  } else {
+    camera.position.set(ball.x, y0+TUNE.camH, ball.z+TUNE.camD);
+    camera.lookAt(ball.x, y0, ball.z);
+  }
   el('top').classList.remove('hidden');
-  el('minimap').classList.remove('hidden');
+  el('minimap').classList.toggle('hidden', !!tower.open); // 月夜の迷宮はミニマップなし（月で方角を掴む）
   el('menuBtn').classList.remove('hidden');
   el('dbgBtn').classList.remove('hidden');
   el('orbB').classList.toggle('hidden', !!tower.endless);
@@ -1923,6 +2330,7 @@ function invItems(){
   const li = [];
   if(state.hasKey) li.push({icon:'🗝️', name:'古い鍵', desc:'錠前の扉を開けられる'});
   if(state.hasCompass) li.push({icon:'🧭', name:'古の羅針盤', desc:'止まっていると出口の方角へ導いてくれる'});
+  if(state.charms>0) li.push({icon:'🔔', name:'鈴のお守り', desc:'敵が近づくと自動で鳴り、怯ませて追い払う', count:state.charms});
   for(const [bid,n] of Object.entries(state.blessings)){
     const b = BLESSINGS[bid];
     li.push({icon:b.icon, name:b.name, desc:b.desc, count:n});
@@ -2029,6 +2437,48 @@ function openLore(){
   el('lore').classList.remove('hidden');
 }
 
+/* ===== 画面の明るさ（機種の輝度差を吸収するための後乗せ補正。⚙パネルと初回キャリブレーションのスライダーを同期） ===== */
+const BRIGHT_STD = 15; // よくある「標準」の目安値。多くの端末はこの付近〜やや右で見やすくなる想定
+function placeBrightTicks(){
+  const pct = (BRIGHT_STD / 50 * 100) + '%';
+  el('t_bright').style.left = pct;
+  el('t_bright3').style.left = pct;
+  el('tl_bright3').style.left = pct;
+}
+function applyBright(v){
+  el('brightOverlay').style.opacity = v/100;
+  el('v_bright').textContent = v;
+  el('s_bright').value = v;
+  el('s_bright3').value = v;
+}
+function saveBright(v){ try{ localStorage.setItem('iseki_bright', v); }catch(e){} }
+function loadBright(){
+  let v = 0;
+  try{ const s = +localStorage.getItem('iseki_bright'); if(isFinite(s) && s>=0) v = s; }catch(e){}
+  applyBright(v);
+}
+function bindBrightness(){
+  placeBrightTicks();
+  for(const sid of ['s_bright','s_bright3']){
+    el(sid).addEventListener('input', ()=>{
+      const v = parseFloat(el(sid).value);
+      applyBright(v);
+      saveBright(v);
+    });
+  }
+  el('bcOkBtn').onclick = ()=>{
+    try{ localStorage.setItem('iseki_bright_seen','1'); }catch(e){}
+    el('brightCalib').classList.add('hidden');
+  };
+}
+// 実際のマップが画面に映っている状態で初回だけ明るさ調整を促す（初期画面のカードは背景が暗転していて実際の見え方の参考にならないため）
+function maybeShowBrightCalib(){
+  let seen = false;
+  try{ seen = localStorage.getItem('iseki_bright_seen')==='1'; }catch(e){}
+  if(seen) return;
+  el('brightCalib').classList.remove('hidden');
+}
+
 /* ===== ⚙デバッグパネル ===== */
 function saveTune(){
   try{ localStorage.setItem('iseki_tune2', JSON.stringify({
@@ -2095,13 +2545,17 @@ el('startBtn').onclick = async ()=>{
     return;
   }
   mode='sensor';
-  calibrate(()=>{ if(!startGame()) el('start').classList.remove('hidden'); });
+  calibrate(()=>{
+    if(!startGame()) el('start').classList.remove('hidden');
+    else maybeShowBrightCalib();
+  });
 };
 el('fingerBtn').onclick = ()=>{
   beep(440,0.05);
   mode='finger';
   el('start').classList.add('hidden');
   if(!startGame()) el('start').classList.remove('hidden');
+  else maybeShowBrightCalib();
 };
 el('againBtn').onclick = ()=>{ el('result').classList.add('hidden'); startGame(tower.seed); };
 el('newTowerBtn').onclick = ()=>{ el('result').classList.add('hidden'); startGame(); };
@@ -2181,6 +2635,7 @@ function loop(){
       el('vignette').style.opacity = state.phase==='dead'? 0 : clamp((2.6-ball.lightR)/1.6, 0, 0.85);
     }
   }
+  updateAmbientPulses(now);
   updateDebugReadout();
   updateFps(dt);
   renderer.render(scene, camera);
@@ -2192,6 +2647,8 @@ createBall();
 initTorchPool();
 loadTune();
 bindDebugPanel();
+loadBright();
+bindBrightness();
 bindFinger();
 prevT = performance.now();
 loop();
