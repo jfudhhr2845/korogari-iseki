@@ -139,6 +139,7 @@
     <label>旋回速度 <span class="dv" id="v_camturn"></span><input type="range" id="s_camturn" min="1" max="15" step="0.5"></label>
     <label>カメラ距離 <span class="dv" id="v_camd"></span><input type="range" id="s_camd" min="1.5" max="5" step="0.1"></label>
     <label>カメラ高さ <span class="dv" id="v_ocamh"></span><input type="range" id="s_ocamh" min="1.5" max="6" step="0.1"></label>
+    <label>見下ろし(注視点高さ) <span class="dv" id="v_lookY"></span><input type="range" id="s_lookY" min="-1" max="3" step="0.1"></label>
     <div class="row"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="c_multiray" style="width:auto">マルチレイ回避</label></div>
   </div>
   <div class="row"><button id="btnRecalib">再キャリブレーション</button></div>
@@ -261,6 +262,7 @@ const TUNE = {
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
   openCamH:4.0, openCamD:4.5, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false,
+  openLookAhead:1.5, openLookY:0.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか（見下ろし角の調整用）
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策） // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
@@ -1689,8 +1691,11 @@ function updateCamera(dt){
     const lerpSpeed = safeDist < curDist-0.05 ? 20 : TUNE.camLerp;
     camera.position.lerp(target, 1-Math.exp(-lerpSpeed*dt));
     // 注視点は常にcamHeading（進行方向）基準。カメラ位置をずらしても見る先はブレさせない。
+    // 高さ(y+openLookY)はボールの接地高さ基準の絶対値にしてあるので、カメラ高さ(openCamH)を
+    // 上げるほど見下ろし角が自動的に深くなる（旧実装は目線からの相対オフセットだったため、
+    // カメラを壁より高く上げるとほぼ水平線しか見えずボールが画面外に消えていた）。
     const lookDirX = Math.sin(camHeading), lookDirZ = Math.cos(camHeading);
-    camera.lookAt(ball.x + lookDirX*3, y+TUNE.openCamH-0.4, ball.z + lookDirZ*3);
+    camera.lookAt(ball.x + lookDirX*TUNE.openLookAhead, y+TUNE.openLookY, ball.z + lookDirZ*TUNE.openLookAhead);
     return;
   }
   const target = new THREE.Vector3(ball.x, y+TUNE.camH, ball.z+TUNE.camD);
@@ -2561,7 +2566,8 @@ function saveTune(){
   try{ localStorage.setItem('iseki_tune2', JSON.stringify({
     accel:TUNE.accel, deadzone:TUNE.deadzone, damp:TUNE.damp, lightR0:TUNE.lightR0,
     nudgeDist:TUNE.nudgeDist, camH:TUNE.camH, invX:TUNE.invX, invY:TUNE.invY, swapXY:TUNE.swapXY,
-    openCamTurnLerp:TUNE.openCamTurnLerp, openCamD:TUNE.openCamD, openCamMultiRay:TUNE.openCamMultiRay, openCamH:TUNE.openCamH
+    openCamTurnLerp:TUNE.openCamTurnLerp, openCamD:TUNE.openCamD, openCamMultiRay:TUNE.openCamMultiRay, openCamH:TUNE.openCamH,
+    openLookY:TUNE.openLookY
   })); }catch(e){}
 }
 function loadTune(){
@@ -2579,7 +2585,8 @@ function bindDebugPanel(){
   };
   const sliders = [['s_accel','v_accel','accel'],['s_dz','v_dz','deadzone'],['s_damp','v_damp','damp'],
                    ['s_lr','v_lr','lightR0'],['s_nd','v_nd','nudgeDist'],['s_camh','v_camh','camH'],
-                   ['s_camturn','v_camturn','openCamTurnLerp'],['s_camd','v_camd','openCamD'],['s_ocamh','v_ocamh','openCamH']];
+                   ['s_camturn','v_camturn','openCamTurnLerp'],['s_camd','v_camd','openCamD'],['s_ocamh','v_ocamh','openCamH'],
+                   ['s_lookY','v_lookY','openLookY']];
   for(const [sid,vid,keyName] of sliders){
     const inp = el(sid);
     inp.value = TUNE[keyName];
