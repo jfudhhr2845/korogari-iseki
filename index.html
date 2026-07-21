@@ -11,7 +11,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;background:#050408}
   body{font-family:'Zen Maru Gothic',sans-serif;color:var(--txt);-webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none}
-  #app{position:fixed;inset:0;filter:url(#brightGamma)}
+  #app{position:fixed;inset:0}
   canvas{display:block}
   .hud{position:fixed;pointer-events:none;z-index:6}
   /* 左上☰・右上⚙と重ならないよう左右50pxを空けて中央寄せ */
@@ -101,15 +101,6 @@
 </head>
 <body>
 <div id="app"></div>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <filter id="brightGamma" color-interpolation-filters="sRGB">
-    <feComponentTransfer>
-      <feFuncR type="gamma" exponent="1" id="gammaR"/>
-      <feFuncG type="gamma" exponent="1" id="gammaG"/>
-      <feFuncB type="gamma" exponent="1" id="gammaB"/>
-    </feComponentTransfer>
-  </filter>
-</svg>
 <button id="menuBtn" class="hidden">☰</button>
 <button id="dbgBtn" class="hidden">⚙</button>
 <div id="top" class="hud hidden">
@@ -240,6 +231,10 @@
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* =========================================================================
    S1. 定数（調整値は必ずここに集約。マジックナンバー禁止）
@@ -1088,7 +1083,7 @@ function genOpenTower(seed, N){
 
 /* ===== ランタイム状態 ===== */
 let tower = null, sizeKey = 'std', mode = null;
-let scene, camera, renderer;
+let scene, camera, renderer, composer, gammaPass;
 let floorGroups = [];
 let camHeading = 0; // 月夜の迷宮: 進行方向追従カメラの平滑化された方位角
 let skyGroup = null; // 月夜の迷宮: 夜空ドーム＋月（モード切替時に作り直す）
@@ -1123,10 +1118,23 @@ function initThree(){
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   el('app').appendChild(renderer.domElement);
   scene.add(new THREE.AmbientLight(0x223344, 0.10));
+  // 画面の明るさ調整: CSSのSVGフィルタだとSafariで属性変更が再描画に反映されないことがあるため、
+  // レンダリング自体にガンマ補正を掛ける後処理パスとして実装（どの端末でも確実に反映される）
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  gammaPass = new ShaderPass({
+    uniforms: { tDiffuse:{value:null}, exponent:{value:1.0} },
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float exponent; varying vec2 vUv;
+      void main(){ vec4 c=texture2D(tDiffuse,vUv); gl_FragColor=vec4(pow(clamp(c.rgb,0.0,1.0),vec3(exponent)),c.a); }`
+  });
+  composer.addPass(gammaPass);
+  composer.addPass(new OutputPass()); // 色空間(sRGB)変換をここで行う（EffectComposer経由だと自動では乗らないため）
   addEventListener('resize', ()=>{
     camera.aspect = innerWidth/innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
   });
 }
 
@@ -2454,11 +2462,11 @@ function placeBrightTicks(){
 }
 function applyBright(v){
   // ガンマ補正（x^exponent、exponent<1で暗部を持ち上げる）。加算合成の白幕と違い、
-  // 真っ黒(0)はそのまま0を保つので「もやがかかる」ような不自然な浮きが出ない
+  // 真っ黒(0)はそのまま0を保つので「もやがかかる」ような不自然な浮きが出ない。
+  // レンダリングパイプライン内のシェーダーパスとして適用しているので、CSSのSVGフィルタと違い
+  // Safari等でも確実に反映される
   const exponent = 1 - (v/50)*0.6;
-  el('gammaR').setAttribute('exponent', exponent);
-  el('gammaG').setAttribute('exponent', exponent);
-  el('gammaB').setAttribute('exponent', exponent);
+  gammaPass.uniforms.exponent.value = exponent;
   el('v_bright').textContent = v;
   el('s_bright').value = v;
   el('s_bright3').value = v;
@@ -2650,7 +2658,7 @@ function loop(){
   updateAmbientPulses(now);
   updateDebugReadout();
   updateFps(dt);
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 /* ===== 初期化 ===== */
