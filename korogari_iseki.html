@@ -260,7 +260,9 @@ const TUNE = {
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
   openCamH:4.0, openCamD:4.5, openWallH:3.4,
-  openLookAhead:1.5, openLookY:0.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか（見下ろし角の調整用）
+  openLookAhead:1.5, openLookY:2.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか（見下ろし角の調整用）
+  // openLookY=2.3は「ボールと月(方角0=camHeadingと同じ)が両方フレーム内に入る」ように計算した値。
+  // 下げるほどボール側に寄り見下ろしが深くなる代わり月が上に外れやすく、上げるほど逆になる。
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
@@ -1101,7 +1103,10 @@ function genOpenTower(seed, N){
       fl.items.push({kind:'torch', x:spot.x, y:spot.y, wdx, wdy, taken:false});
     }
 
-    fl.moonAngle = rng()*Math.PI*2; // このシードでの月の方角（固定）
+    // カメラが常にcamHeading=0固定（回転しない）なので、月もその方角に固定して常に画角に入るようにする。
+    // （固定カメラ導入前はシードごとにランダムな方角だったが、回転しないカメラだと大半のシードで
+    // 月が視界に入らなくなるため、意味のないランダム性をやめて向きを揃えた）
+    fl.moonAngle = 0;
     return { seed, N:N2, floors:[fl], start:fl.start, open:true, sizeKey:'abyss' };
   }
   return null;
