@@ -2317,8 +2317,10 @@ function startGame(newSeed){
   distField=null; comboN=0; comboT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
-  // 月夜の迷宮は固定方向カメラなので、向きを月の方角に合わせる（月が常に画角に入るように）
-  camHeading = tower.open ? tower.floors[0].moonAngle : 0;
+  // 固定方向カメラ。迷路は軸並行(0/90/180/270度)なので、向きは必ずその4方向のどれかにする。
+  // （前バージョンは月の方角(ランダムな連続角)にそのまま合わせていたため、通路の軸とズレて
+  // 常に壁を斜めに見る格好になり、画面のほとんどが壁で埋まる不具合になっていた）
+  camHeading = 0;
   if(tower.open){
     const eyeY0 = y0+TUNE.openCamH;
     const dirX0 = Math.sin(camHeading), dirZ0 = Math.cos(camHeading);
