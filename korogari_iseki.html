@@ -135,12 +135,10 @@
   <div class="row"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="c_invy" style="width:auto">Y反転</label></div>
   <div class="row"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="c_swap" style="width:auto">XY入替</label></div>
   <div id="dbgOpenOnly" class="hidden">
-    <div style="margin-top:6px;opacity:.7;font-size:11px">月夜の迷宮 カメラ</div>
-    <label>旋回速度 <span class="dv" id="v_camturn"></span><input type="range" id="s_camturn" min="1" max="15" step="0.5"></label>
+    <div style="margin-top:6px;opacity:.7;font-size:11px">月夜の迷宮 カメラ（固定方向）</div>
     <label>カメラ距離 <span class="dv" id="v_camd"></span><input type="range" id="s_camd" min="1.5" max="5" step="0.1"></label>
     <label>カメラ高さ <span class="dv" id="v_ocamh"></span><input type="range" id="s_ocamh" min="1.5" max="6" step="0.1"></label>
     <label>見下ろし(注視点高さ) <span class="dv" id="v_lookY"></span><input type="range" id="s_lookY" min="-1" max="3" step="0.1"></label>
-    <div class="row"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="c_multiray" style="width:auto">マルチレイ回避</label></div>
   </div>
   <div class="row"><button id="btnRecalib">再キャリブレーション</button></div>
   <div style="margin-top:8px;opacity:.85">生値: <span id="v_raw">-</span></div>
@@ -261,10 +259,10 @@ const TUNE = {
   stickRadius:70,
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
-  openCamH:4.0, openCamD:4.5, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false,
+  openCamH:4.0, openCamD:4.5, openWallH:3.4,
   openLookAhead:1.5, openLookY:0.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか（見下ろし角の調整用）
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
-  // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策） // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
+  // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
   enemySpeed:2.2, enemyAccel:6, enemyDamp:3.0,
   enemyNoticeR:5.0, enemyDecisionInterval:1.4,
@@ -1644,47 +1642,15 @@ function cameraSafeDist(px,py,pz, dx,dy,dz, maxDist){
   if(hits.length) return Math.max(0.5, hits[0].distance - 0.3);
   return maxDist;
 }
-// マルチレイ版のカメラ回避候補角（camHeadingからのオフセット、ラジアン）。0=真後ろを最優先。
-const CAM_PROBE_OFFSETS = [0, -0.4, 0.4, -0.8, 0.8, -1.2, 1.2];
-let camProbeOffset = 0;
-let camQuarter = 0; // 迷路は必ず軸並行なので、カメラの目標方位は常に4方向のどれかに量子化する（ヒステリシス付き）
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
   if(tower && tower.open){
-    // 月夜の迷宮: 俯瞰をやめ、進行方向の後方から追従する近距離三人称視点
-    const speed = Math.hypot(ball.vx, ball.vz);
-    if(speed > 0.3){
-      // 生の速度方向(atan2)をそのまま追従先にすると通路内の微妙な斜め振れがカメラのブレになるため、
-      // 迷路が必ず軸並行であることを利用して目標を常に4方向のどれかへ丸める。
-      // （前バージョンは「今の方向から55°以上外れないと切替しない」ヒステリシスを入れていたが、
-      // 曲がり角に入ってもカメラが切り替わらず固着し、横に曲がれないように見える不具合が出たため撤去）
-      const raw = Math.atan2(ball.vx, ball.vz);
-      camQuarter = Math.round(raw/(Math.PI/2)) * (Math.PI/2);
-    }
-    let dh = camQuarter - camHeading;
-    dh = ((dh + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // 最短方向に正規化
-    camHeading += dh * (1-Math.exp(-TUNE.openCamTurnLerp*dt));
+    // 月夜の迷宮: 回転しない固定方向カメラ。camHeadingはstartGameで月の方角に固定し、以後変えない
+    // （操作(常に世界固定軸)とカメラ向きがズレて回転すると操作感が破綻するため、カメラの回転自体をやめた。
+    // 固定方向を月の方角に合わせることで、月が常に画角に入り続け、方角の目印としても機能する）
     const eyeY = y + TUNE.openCamH;
-    let dirX, dirZ, safeDist;
-    if(TUNE.openCamMultiRay){
-      // 真後ろ1本が角の壁に詰まっている時、近い角度を何本か試して一番開けている方向へカメラをずらす
-      // （見ている方向＝camHeadingは変えない。カメラの"位置"だけ少し横にずらして壁を避ける）
-      let bestOff = 0, bestScore = -1;
-      for(const off of CAM_PROBE_OFFSETS){
-        const ang = camHeading + off;
-        const dx = Math.sin(ang), dz = Math.cos(ang);
-        const d = cameraSafeDist(ball.x, eyeY, ball.z, -dx, 0, -dz, TUNE.openCamD);
-        const score = d + (Math.abs(off-camProbeOffset)<0.05 ? 0.4 : 0); // 今の選択に留まるボーナス＝頻繁な切替を防ぐ
-        if(score > bestScore){ bestScore = score; bestOff = off; }
-      }
-      camProbeOffset += (bestOff-camProbeOffset) * (1-Math.exp(-6*dt));
-      const ang = camHeading + camProbeOffset;
-      dirX = Math.sin(ang); dirZ = Math.cos(ang);
-      safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
-    } else {
-      dirX = Math.sin(camHeading); dirZ = Math.cos(camHeading);
-      safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
-    }
+    const dirX = Math.sin(camHeading), dirZ = Math.cos(camHeading);
+    const safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
     const target = new THREE.Vector3(ball.x - dirX*safeDist, eyeY, ball.z - dirZ*safeDist);
     // 壁に押されて手前に引き寄せる時は素早く（めり込みを見せない）、離れる時は普段どおり滑らかに戻す
     const curDist = Math.hypot(camera.position.x-ball.x, camera.position.y-eyeY, camera.position.z-ball.z);
@@ -2351,12 +2317,14 @@ function startGame(newSeed){
   distField=null; comboN=0; comboT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
-  camHeading = 0; camProbeOffset = 0; camQuarter = 0;
+  // 月夜の迷宮は固定方向カメラなので、向きを月の方角に合わせる（月が常に画角に入るように）
+  camHeading = tower.open ? tower.floors[0].moonAngle : 0;
   if(tower.open){
     const eyeY0 = y0+TUNE.openCamH;
-    const safeDist0 = cameraSafeDist(ball.x, eyeY0, ball.z, 0, 0, -1, TUNE.openCamD);
-    camera.position.set(ball.x, eyeY0, ball.z-safeDist0);
-    camera.lookAt(ball.x, eyeY0-0.4, ball.z+3);
+    const dirX0 = Math.sin(camHeading), dirZ0 = Math.cos(camHeading);
+    const safeDist0 = cameraSafeDist(ball.x, eyeY0, ball.z, -dirX0, 0, -dirZ0, TUNE.openCamD);
+    camera.position.set(ball.x-dirX0*safeDist0, eyeY0, ball.z-dirZ0*safeDist0);
+    camera.lookAt(ball.x+dirX0*TUNE.openLookAhead, y0+TUNE.openLookY, ball.z+dirZ0*TUNE.openLookAhead);
   } else {
     camera.position.set(ball.x, y0+TUNE.camH, ball.z+TUNE.camD);
     camera.lookAt(ball.x, y0, ball.z);
@@ -2566,8 +2534,7 @@ function saveTune(){
   try{ localStorage.setItem('iseki_tune2', JSON.stringify({
     accel:TUNE.accel, deadzone:TUNE.deadzone, damp:TUNE.damp, lightR0:TUNE.lightR0,
     nudgeDist:TUNE.nudgeDist, camH:TUNE.camH, invX:TUNE.invX, invY:TUNE.invY, swapXY:TUNE.swapXY,
-    openCamTurnLerp:TUNE.openCamTurnLerp, openCamD:TUNE.openCamD, openCamMultiRay:TUNE.openCamMultiRay, openCamH:TUNE.openCamH,
-    openLookY:TUNE.openLookY
+    openCamD:TUNE.openCamD, openCamH:TUNE.openCamH, openLookY:TUNE.openLookY
   })); }catch(e){}
 }
 function loadTune(){
@@ -2585,7 +2552,7 @@ function bindDebugPanel(){
   };
   const sliders = [['s_accel','v_accel','accel'],['s_dz','v_dz','deadzone'],['s_damp','v_damp','damp'],
                    ['s_lr','v_lr','lightR0'],['s_nd','v_nd','nudgeDist'],['s_camh','v_camh','camH'],
-                   ['s_camturn','v_camturn','openCamTurnLerp'],['s_camd','v_camd','openCamD'],['s_ocamh','v_ocamh','openCamH'],
+                   ['s_camd','v_camd','openCamD'],['s_ocamh','v_ocamh','openCamH'],
                    ['s_lookY','v_lookY','openLookY']];
   for(const [sid,vid,keyName] of sliders){
     const inp = el(sid);
@@ -2600,11 +2567,9 @@ function bindDebugPanel(){
   el('c_invx').checked = TUNE.invX<0;
   el('c_invy').checked = TUNE.invY<0;
   el('c_swap').checked = TUNE.swapXY;
-  el('c_multiray').checked = TUNE.openCamMultiRay;
   el('c_invx').addEventListener('change', ()=>{ TUNE.invX = el('c_invx').checked?-1:1; saveTune(); });
   el('c_invy').addEventListener('change', ()=>{ TUNE.invY = el('c_invy').checked?-1:1; saveTune(); });
   el('c_swap').addEventListener('change', ()=>{ TUNE.swapXY = el('c_swap').checked; saveTune(); });
-  el('c_multiray').addEventListener('change', ()=>{ TUNE.openCamMultiRay = el('c_multiray').checked; saveTune(); });
   el('btnRecalib').onclick = ()=>{
     if(mode!=='sensor'){ toast('指モードでは不要です'); return; }
     calibrate(()=>{});
