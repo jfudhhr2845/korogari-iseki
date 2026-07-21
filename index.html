@@ -267,10 +267,11 @@ const TUNE = {
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
   openCamH:4.0, openCamD:4.5, openWallH:3.4,
-  openLookAhead:1.5, openLookY:0, openLookYUp:2.3, openLookYSide:-4, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか
-  // openLookY(通常=縦通路、カメラの固定軸と一致)は壁・通路が見やすい深め。openLookYUpは「見上げる」
-  // ボタン押下中だけ使う浅い角度(月鑑賞用)。openLookYSideは横通路(カメラの軸と垂直)を移動中だけ使う
-  // 更に深い俯瞰角(壁がカメラの正面を塞いで真っ暗になるのを防ぐ)。
+  openLookAhead:1.5, openLookY:0, openLookYUp:2.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか
+  // 横通路(カメラの固定軸と垂直)を移動中は、見下ろし角だけでなくカメラ自体の高さ・距離も
+  // ほぼ真上寄りへブレンドする（見下ろし角だけ深くしても、カメラ自体が低いままだと壁が近すぎて
+  // 結局視界を塞ぐため）。openCamHSide/openCamDSide/openLookAheadSide/openLookYSideがその目標値。
+  openCamHSide:7, openCamDSide:2, openLookAheadSide:1.0, openLookYSide:-6,
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
@@ -1655,34 +1656,34 @@ function cameraSafeDist(px,py,pz, dx,dy,dz, maxDist){
   return maxDist;
 }
 let lookingUp = false; // 「見上げる」ボタン押下中はtrue。月を見るための一時的な浅い見下ろし角に切り替える
+let camSideBlend = 0; // 0=縦通路寄りの通常カメラ、1=横通路寄りのほぼ真上カメラ（滑らかに追従）
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
   if(tower && tower.open){
     // 月夜の迷宮: 回転しない固定方向カメラ（camHeading=OPEN_CAM_HEADINGで固定、以後変えない）。
     // 操作(常に世界固定軸)とカメラ向きがズレて回転すると操作感が破綻するため、回転自体をやめた。
-    const eyeY = y + TUNE.openCamH;
+    // 横通路(カメラの固定軸=Zと垂直)へ入ると正面がすぐ壁で塞がるため、速度のX成分比率(sideFrac)を見て
+    // 高さ・距離・見下ろし角をまとめて「ほぼ真上」寄りへブレンドする（見下ろし角だけ変えても、
+    // カメラ自体の位置が低いままだと壁の近さは変わらず視界は塞がったままなので）。
+    const spd = Math.hypot(ball.vx, ball.vz);
+    const sideFrac = spd > 0.15 ? Math.abs(ball.vx)/spd : 0; // 0=縦(カメラ軸)方向、1=横方向
+    camSideBlend += (sideFrac - camSideBlend) * (1-Math.exp(-6*dt));
+    const camH = lerp(TUNE.openCamH, TUNE.openCamHSide, camSideBlend);
+    const camD = lerp(TUNE.openCamD, TUNE.openCamDSide, camSideBlend);
+    const lookAhead = lerp(TUNE.openLookAhead, TUNE.openLookAheadSide, camSideBlend);
+    const eyeY = y + camH;
     const dirX = Math.sin(camHeading), dirZ = Math.cos(camHeading);
-    const safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
+    const safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, camD);
     const target = new THREE.Vector3(ball.x - dirX*safeDist, eyeY, ball.z - dirZ*safeDist);
     // 壁に押されて手前に引き寄せる時は素早く（めり込みを見せない）、離れる時は普段どおり滑らかに戻す
     const curDist = Math.hypot(camera.position.x-ball.x, camera.position.y-eyeY, camera.position.z-ball.z);
     const lerpSpeed = safeDist < curDist-0.05 ? 20 : TUNE.camLerp;
     camera.position.lerp(target, 1-Math.exp(-lerpSpeed*dt));
-    // 注視点の高さはボール接地高さ基準の絶対値。カメラの固定軸(Z)と同じ向きの通路(縦)では
-    // 壁・通路が見やすい深めの見下ろし(openLookY)。カメラの軸と垂直な通路(横)へ入ると、
-    // 正面が壁で塞がって画面が壁だらけになるため、速度のX成分の比率(sideFrac)に応じて
-    // より俯瞰寄りの角度(openLookYSide)へブレンドする。「見上げる」ボタンはそれらより優先。
+    // 注視点の高さはボール接地高さ基準の絶対値。「見上げる」ボタンはsideFracブレンドより優先。
     const lookDirX = Math.sin(camHeading), lookDirZ = Math.cos(camHeading);
-    let targetLookY;
-    if(lookingUp){
-      targetLookY = TUNE.openLookYUp;
-    } else {
-      const spd = Math.hypot(ball.vx, ball.vz);
-      const sideFrac = spd > 0.15 ? Math.abs(ball.vx)/spd : 0; // 0=縦(カメラ軸)方向、1=横方向
-      targetLookY = lerp(TUNE.openLookY, TUNE.openLookYSide, sideFrac);
-    }
+    const targetLookY = lookingUp ? TUNE.openLookYUp : lerp(TUNE.openLookY, TUNE.openLookYSide, camSideBlend);
     camCurLookY += (targetLookY - camCurLookY) * (1-Math.exp(-8*dt));
-    camera.lookAt(ball.x + lookDirX*TUNE.openLookAhead, y+camCurLookY, ball.z + lookDirZ*TUNE.openLookAhead);
+    camera.lookAt(ball.x + lookDirX*lookAhead, y+camCurLookY, ball.z + lookDirZ*lookAhead);
     return;
   }
   const target = new THREE.Vector3(ball.x, y+TUNE.camH, ball.z+TUNE.camD);
@@ -2339,7 +2340,7 @@ function startGame(newSeed){
   updateFloorVisibility();
   const y0 = TUNE.ballR;
   camHeading = tower.open ? OPEN_CAM_HEADING : 0;
-  lookingUp = false; camCurLookY = TUNE.openLookY;
+  lookingUp = false; camCurLookY = TUNE.openLookY; camSideBlend = 0;
   if(tower.open){
     const eyeY0 = y0+TUNE.openCamH;
     const dirX0 = Math.sin(camHeading), dirZ0 = Math.cos(camHeading);
