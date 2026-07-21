@@ -267,9 +267,10 @@ const TUNE = {
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
   openCamH:4.0, openCamD:4.5, openWallH:3.4,
-  openLookAhead:1.5, openLookY:0, openLookYUp:2.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか
-  // openLookY(通常時)は見下ろしを深めにして壁・通路の見やすさを優先。openLookYUpは「見上げる」ボタン
-  // 押下中だけ使う値で、ボールと月(camHeadingと同じ方角)が両方フレーム内に入るよう計算した値。
+  openLookAhead:1.5, openLookY:0, openLookYUp:2.3, openLookYSide:-4, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか
+  // openLookY(通常=縦通路、カメラの固定軸と一致)は壁・通路が見やすい深め。openLookYUpは「見上げる」
+  // ボタン押下中だけ使う浅い角度(月鑑賞用)。openLookYSideは横通路(カメラの軸と垂直)を移動中だけ使う
+  // 更に深い俯瞰角(壁がカメラの正面を塞いで真っ暗になるのを防ぐ)。
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
@@ -1667,10 +1668,19 @@ function updateCamera(dt){
     const curDist = Math.hypot(camera.position.x-ball.x, camera.position.y-eyeY, camera.position.z-ball.z);
     const lerpSpeed = safeDist < curDist-0.05 ? 20 : TUNE.camLerp;
     camera.position.lerp(target, 1-Math.exp(-lerpSpeed*dt));
-    // 注視点の高さはボール接地高さ基準の絶対値。通常は壁・通路が見やすい深めの見下ろし(openLookY)、
-    // 「見上げる」ボタン押下中だけ月が画角に入る浅い角度(openLookYUp)へ滑らかに切り替える。
+    // 注視点の高さはボール接地高さ基準の絶対値。カメラの固定軸(Z)と同じ向きの通路(縦)では
+    // 壁・通路が見やすい深めの見下ろし(openLookY)。カメラの軸と垂直な通路(横)へ入ると、
+    // 正面が壁で塞がって画面が壁だらけになるため、速度のX成分の比率(sideFrac)に応じて
+    // より俯瞰寄りの角度(openLookYSide)へブレンドする。「見上げる」ボタンはそれらより優先。
     const lookDirX = Math.sin(camHeading), lookDirZ = Math.cos(camHeading);
-    const targetLookY = lookingUp ? TUNE.openLookYUp : TUNE.openLookY;
+    let targetLookY;
+    if(lookingUp){
+      targetLookY = TUNE.openLookYUp;
+    } else {
+      const spd = Math.hypot(ball.vx, ball.vz);
+      const sideFrac = spd > 0.15 ? Math.abs(ball.vx)/spd : 0; // 0=縦(カメラ軸)方向、1=横方向
+      targetLookY = lerp(TUNE.openLookY, TUNE.openLookYSide, sideFrac);
+    }
     camCurLookY += (targetLookY - camCurLookY) * (1-Math.exp(-8*dt));
     camera.lookAt(ball.x + lookDirX*TUNE.openLookAhead, y+camCurLookY, ball.z + lookDirZ*TUNE.openLookAhead);
     return;
