@@ -1047,10 +1047,31 @@ function genOpenTower(seed, N){
     const reach = endlessReach(fl, N, start);
     if(!reach[idx(N,exitCell.x,exitCell.y)]) continue;
 
-    // アイテム: 到達可能セルにのみ配置（灯り玉・宝箱・石碑・松明）
+    // 通路・壁を2倍サイズにブロー・アップ（1マス幅の通路だと3人称カメラが背後に下がれず壁に張り付く問題の対策。
+    // トポロジーは不変のまま、生成済みタイルを2x2ブロックへ展開するだけ＝アイテム配置等はこの後の座標系で行う）
+    const N2 = N*2;
+    const tiles2 = new Uint8Array(N2*N2);
+    const reach2 = new Uint8Array(N2*N2);
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      const t = fl.tiles[idx(N,x,y)], r = reach[idx(N,x,y)];
+      for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+        tiles2[idx(N2,2*x+dx,2*y+dy)] = t;
+        reach2[idx(N2,2*x+dx,2*y+dy)] = r;
+      }
+    }
+    fl.tiles = tiles2; fl.N = N2;
+    fl.start = {x:start.x*2, y:start.y*2};
+    fl.exit = {x:exitCell.x*2, y:exitCell.y*2};
+    const reserved2 = new Set();
+    for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+      reserved2.add(key2(fl.start.x+dx, fl.start.y+dy));
+      reserved2.add(key2(fl.exit.x+dx, fl.exit.y+dy));
+    }
+
+    // アイテム: 到達可能セルにのみ配置（灯り玉・宝箱・石碑・松明）※ブロー・アップ後の座標系
     const floorTiles=[];
-    for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){
-      if(fl.tiles[idx(N,x,y)]===T.FLOOR && reach[idx(N,x,y)] && !reserved.has(key2(x,y))) floorTiles.push({x,y});
+    for(let y=1;y<N2-1;y++)for(let x=1;x<N2-1;x++){
+      if(fl.tiles[idx(N2,x,y)]===T.FLOOR && reach2[idx(N2,x,y)] && !reserved2.has(key2(x,y))) floorTiles.push({x,y});
     }
     const pool = shuffled(floorTiles, rng);
     let pi=0;
@@ -1062,7 +1083,7 @@ function genOpenTower(seed, N){
       fl.items.push({kind:'stele', x:pool[pi].x, y:pool[pi].y, taken:false, registered:false});
     const torchSpots=[];
     for(const c of floorTiles){
-      const wallDirs = DIRS4.filter(([dx,dy])=> inb(N,c.x+dx,c.y+dy) && fl.tiles[idx(N,c.x+dx,c.y+dy)]===T.WALL);
+      const wallDirs = DIRS4.filter(([dx,dy])=> inb(N2,c.x+dx,c.y+dy) && fl.tiles[idx(N2,c.x+dx,c.y+dy)]===T.WALL);
       if(wallDirs.length) torchSpots.push({x:c.x, y:c.y, wallDirs});
     }
     const tp = shuffled(torchSpots, rng);
@@ -1072,7 +1093,7 @@ function genOpenTower(seed, N){
     }
 
     fl.moonAngle = rng()*Math.PI*2; // このシードでの月の方角（固定）
-    return { seed, N, floors:[fl], start, open:true, sizeKey:'abyss' };
+    return { seed, N:N2, floors:[fl], start:fl.start, open:true, sizeKey:'abyss' };
   }
   return null;
 }
