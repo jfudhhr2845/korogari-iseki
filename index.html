@@ -259,7 +259,7 @@ const TUNE = {
   stickRadius:70,
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
-  openCamH:2.2, openCamD:3.0, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false, // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
+  openCamH:2.2, openCamD:4.5, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false, // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
   enemySpeed:2.2, enemyAccel:6, enemyDamp:3.0,
   enemyNoticeR:5.0, enemyDecisionInterval:1.4,
@@ -1648,13 +1648,13 @@ function updateCamera(dt){
   if(tower && tower.open){
     // 月夜の迷宮: 俯瞰をやめ、進行方向の後方から追従する近距離三人称視点
     const speed = Math.hypot(ball.vx, ball.vz);
-    if(speed > 0.8){
-      // 生の速度方向(atan2)を毎フレーム追従先にすると、通路内の微妙な斜め振れ（センサーノイズ・壁際の当たり）が
-      // そのままカメラの向きのブレになる。迷路は軸並行なので目標は常に4方向のどれかに丸め、
-      // かつ「今の採用方向からしっかり(約55°以上)外れた時だけ」切り替えるヒステリシスを設けてバタつきを防ぐ。
+    if(speed > 0.3){
+      // 生の速度方向(atan2)をそのまま追従先にすると通路内の微妙な斜め振れがカメラのブレになるため、
+      // 迷路が必ず軸並行であることを利用して目標を常に4方向のどれかへ丸める。
+      // （前バージョンは「今の方向から55°以上外れないと切替しない」ヒステリシスを入れていたが、
+      // 曲がり角に入ってもカメラが切り替わらず固着し、横に曲がれないように見える不具合が出たため撤去）
       const raw = Math.atan2(ball.vx, ball.vz);
-      const diffFromCur = ((raw - camQuarter + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
-      if(Math.abs(diffFromCur) > 0.96) camQuarter = Math.round(raw/(Math.PI/2)) * (Math.PI/2);
+      camQuarter = Math.round(raw/(Math.PI/2)) * (Math.PI/2);
     }
     let dh = camQuarter - camHeading;
     dh = ((dh + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // 最短方向に正規化
@@ -2527,7 +2527,7 @@ function applyBright(v){
 }
 function saveBright(v){ try{ localStorage.setItem('iseki_bright', v); }catch(e){} }
 function loadBright(){
-  let v = 0;
+  let v = BRIGHT_STD; // 未保存時（初回・データ消去後）のデフォルトは「標準」ティックと同じ値にする
   try{ const s = +localStorage.getItem('iseki_bright'); if(isFinite(s) && s>=0) v = s; }catch(e){}
   applyBright(v);
 }
