@@ -1642,17 +1642,23 @@ function cameraSafeDist(px,py,pz, dx,dy,dz, maxDist){
 // マルチレイ版のカメラ回避候補角（camHeadingからのオフセット、ラジアン）。0=真後ろを最優先。
 const CAM_PROBE_OFFSETS = [0, -0.4, 0.4, -0.8, 0.8, -1.2, 1.2];
 let camProbeOffset = 0;
+let camQuarter = 0; // 迷路は必ず軸並行なので、カメラの目標方位は常に4方向のどれかに量子化する（ヒステリシス付き）
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
   if(tower && tower.open){
     // 月夜の迷宮: 俯瞰をやめ、進行方向の後方から追従する近距離三人称視点
     const speed = Math.hypot(ball.vx, ball.vz);
-    if(speed > 0.3){
-      const desired = Math.atan2(ball.vx, ball.vz);
-      let dh = desired - camHeading;
-      dh = ((dh + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // 最短方向に正規化
-      camHeading += dh * (1-Math.exp(-TUNE.openCamTurnLerp*dt));
+    if(speed > 0.8){
+      // 生の速度方向(atan2)を毎フレーム追従先にすると、通路内の微妙な斜め振れ（センサーノイズ・壁際の当たり）が
+      // そのままカメラの向きのブレになる。迷路は軸並行なので目標は常に4方向のどれかに丸め、
+      // かつ「今の採用方向からしっかり(約55°以上)外れた時だけ」切り替えるヒステリシスを設けてバタつきを防ぐ。
+      const raw = Math.atan2(ball.vx, ball.vz);
+      const diffFromCur = ((raw - camQuarter + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+      if(Math.abs(diffFromCur) > 0.96) camQuarter = Math.round(raw/(Math.PI/2)) * (Math.PI/2);
     }
+    let dh = camQuarter - camHeading;
+    dh = ((dh + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI; // 最短方向に正規化
+    camHeading += dh * (1-Math.exp(-TUNE.openCamTurnLerp*dt));
     const eyeY = y + TUNE.openCamH;
     let dirX, dirZ, safeDist;
     if(TUNE.openCamMultiRay){
@@ -2337,7 +2343,7 @@ function startGame(newSeed){
   distField=null; comboN=0; comboT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
-  camHeading = 0; camProbeOffset = 0;
+  camHeading = 0; camProbeOffset = 0; camQuarter = 0;
   if(tower.open){
     const eyeY0 = y0+TUNE.openCamH;
     const safeDist0 = cameraSafeDist(ball.x, eyeY0, ball.z, 0, 0, -1, TUNE.openCamD);
