@@ -138,6 +138,7 @@
     <div style="margin-top:6px;opacity:.7;font-size:11px">月夜の迷宮 カメラ</div>
     <label>旋回速度 <span class="dv" id="v_camturn"></span><input type="range" id="s_camturn" min="1" max="15" step="0.5"></label>
     <label>カメラ距離 <span class="dv" id="v_camd"></span><input type="range" id="s_camd" min="1.5" max="5" step="0.1"></label>
+    <label>カメラ高さ <span class="dv" id="v_ocamh"></span><input type="range" id="s_ocamh" min="1.5" max="6" step="0.1"></label>
     <div class="row"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="c_multiray" style="width:auto">マルチレイ回避</label></div>
   </div>
   <div class="row"><button id="btnRecalib">再キャリブレーション</button></div>
@@ -259,7 +260,9 @@ const TUNE = {
   stickRadius:70,
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
-  openCamH:2.2, openCamD:4.5, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false, // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
+  openCamH:4.0, openCamD:4.5, openCamTurnLerp:5, openWallH:3.4, openCamMultiRay:false,
+  // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
+  // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策） // 月夜の迷宮: 近距離三人称カメラ・高い壁（壁が高すぎると常に空が隠れてしまうため、カメラのピッチとセットで調整）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
   enemySpeed:2.2, enemyAccel:6, enemyDamp:3.0,
   enemyNoticeR:5.0, enemyDecisionInterval:1.4,
@@ -2558,7 +2561,7 @@ function saveTune(){
   try{ localStorage.setItem('iseki_tune2', JSON.stringify({
     accel:TUNE.accel, deadzone:TUNE.deadzone, damp:TUNE.damp, lightR0:TUNE.lightR0,
     nudgeDist:TUNE.nudgeDist, camH:TUNE.camH, invX:TUNE.invX, invY:TUNE.invY, swapXY:TUNE.swapXY,
-    openCamTurnLerp:TUNE.openCamTurnLerp, openCamD:TUNE.openCamD, openCamMultiRay:TUNE.openCamMultiRay
+    openCamTurnLerp:TUNE.openCamTurnLerp, openCamD:TUNE.openCamD, openCamMultiRay:TUNE.openCamMultiRay, openCamH:TUNE.openCamH
   })); }catch(e){}
 }
 function loadTune(){
@@ -2576,7 +2579,7 @@ function bindDebugPanel(){
   };
   const sliders = [['s_accel','v_accel','accel'],['s_dz','v_dz','deadzone'],['s_damp','v_damp','damp'],
                    ['s_lr','v_lr','lightR0'],['s_nd','v_nd','nudgeDist'],['s_camh','v_camh','camH'],
-                   ['s_camturn','v_camturn','openCamTurnLerp'],['s_camd','v_camd','openCamD']];
+                   ['s_camturn','v_camturn','openCamTurnLerp'],['s_camd','v_camd','openCamD'],['s_ocamh','v_ocamh','openCamH']];
   for(const [sid,vid,keyName] of sliders){
     const inp = el(sid);
     inp.value = TUNE[keyName];
