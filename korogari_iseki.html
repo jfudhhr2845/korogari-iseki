@@ -21,6 +21,8 @@
   .val{font-size:17px;font-weight:900;line-height:1.2}
   #menuBtn{position:fixed;top:10px;left:10px;z-index:8;pointer-events:auto;cursor:pointer;width:34px;height:34px;border-radius:50%;border:none;background:rgba(245,239,225,.9);color:#26323a;font-weight:900;font-size:15px;font-family:inherit}
   #dbgBtn{position:fixed;top:10px;right:10px;z-index:8;pointer-events:auto;cursor:pointer;width:34px;height:34px;border-radius:50%;border:none;background:rgba(245,239,225,.9);color:#26323a;font-weight:900;font-size:16px;font-family:inherit}
+  #lookUpBtn{position:fixed;right:14px;bottom:18px;z-index:8;pointer-events:auto;cursor:pointer;width:64px;height:64px;border-radius:50%;border:none;background:rgba(245,239,225,.55);color:#26323a;font-weight:900;font-size:22px;font-family:inherit;-webkit-user-select:none;user-select:none}
+  #lookUpBtn.active{background:rgba(245,239,225,.95)}
   #dbg{position:fixed;top:50px;right:8px;z-index:8;background:rgba(16,20,26,.94);border:1px solid var(--line);border-radius:14px;padding:10px 12px;width:230px;font-size:11px;font-weight:700;max-height:80vh;overflow:auto}
   #dbg label{display:block;margin-top:7px}
   #dbg input[type=range]{width:100%}
@@ -103,6 +105,7 @@
 <div id="app"></div>
 <button id="menuBtn" class="hidden">☰</button>
 <button id="dbgBtn" class="hidden">⚙</button>
+<button id="lookUpBtn" class="hidden">🌙</button>
 <div id="top" class="hud hidden">
   <div class="badge"><div class="cap">タイム</div><div class="val" id="timeV">0:00.0</div></div>
   <div class="badge"><div class="cap">フロア</div><div class="val" id="floorV">1F</div></div>
@@ -248,6 +251,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 const T = { WALL:0, FLOOR:1, HOLE:2, STAIR_UP:3, STAIR_DOWN:4, EXIT:5,
             ICE:6, SAND:7, CRACK:8, GRATE:9, DOOR_LOCK:10, DOOR_ONEWAY:11, WIND:12 };
 const DIRS4 = [[1,0],[-1,0],[0,1],[0,-1]];
+// 月夜の迷宮: 固定カメラの向き。標準タワーは camera.position=ball+(0,camH,+camD) で見た目上「+Zが手前/-Zが奥」
+// になる規約なので、それに合わせてcamHeading=πにする（0のままだと奥行きが逆になり、傾きと逆方向に
+// 進んで見える不具合になる）。月もこの向きに合わせて常に画角へ入るようにする。
+const OPEN_CAM_HEADING = Math.PI;
 
 const TUNE = {
   accel:26, deadzone:0.06, maxTilt:0.45, damp:3.5, dampIce:0.25, dampSand:9.0,
@@ -260,9 +267,9 @@ const TUNE = {
   invX:1, invY:1, swapXY:false,
   windAccel:9, cursedDrain:1.4, // 環境ギミック・呪われた宝箱
   openCamH:4.0, openCamD:4.5, openWallH:3.4,
-  openLookAhead:1.5, openLookY:2.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか（見下ろし角の調整用）
-  // openLookY=2.3は「ボールと月(方角0=camHeadingと同じ)が両方フレーム内に入る」ように計算した値。
-  // 下げるほどボール側に寄り見下ろしが深くなる代わり月が上に外れやすく、上げるほど逆になる。
+  openLookAhead:1.5, openLookY:0, openLookYUp:2.3, // 注視点: 進行方向へどれだけ先/ボール接地高さからどれだけ上を見るか
+  // openLookY(通常時)は見下ろしを深めにして壁・通路の見やすさを優先。openLookYUpは「見上げる」ボタン
+  // 押下中だけ使う値で、ボールと月(camHeadingと同じ方角)が両方フレーム内に入るよう計算した値。
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
   // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
@@ -1103,10 +1110,8 @@ function genOpenTower(seed, N){
       fl.items.push({kind:'torch', x:spot.x, y:spot.y, wdx, wdy, taken:false});
     }
 
-    // カメラが常にcamHeading=0固定（回転しない）なので、月もその方角に固定して常に画角に入るようにする。
-    // （固定カメラ導入前はシードごとにランダムな方角だったが、回転しないカメラだと大半のシードで
-    // 月が視界に入らなくなるため、意味のないランダム性をやめて向きを揃えた）
-    fl.moonAngle = 0;
+    // カメラは常にOPEN_CAM_HEADING固定（回転しない）なので、月もその方角に固定して常に画角に入るようにする。
+    fl.moonAngle = OPEN_CAM_HEADING;
     return { seed, N:N2, floors:[fl], start:fl.start, open:true, sizeKey:'abyss' };
   }
   return null;
@@ -1120,7 +1125,8 @@ function genOpenTower(seed, N){
 let tower = null, sizeKey = 'std', mode = null;
 let scene, camera, renderer, composer, gammaPass;
 let floorGroups = [];
-let camHeading = 0; // 月夜の迷宮: 進行方向追従カメラの平滑化された方位角
+let camHeading = 0; // 月夜の迷宮: 固定カメラの向き（起動時に一度だけ設定、以後変わらない）
+let camCurLookY = 0; // 注視点高さの現在値（通常⇔見上げるを滑らかに補間）
 let skyGroup = null; // 月夜の迷宮: 夜空ドーム＋月（モード切替時に作り直す）
 let ballMesh, ballLight, flashT = 0;
 let torchLightPool = [], torchAssignT = 0;
@@ -1647,12 +1653,12 @@ function cameraSafeDist(px,py,pz, dx,dy,dz, maxDist){
   if(hits.length) return Math.max(0.5, hits[0].distance - 0.3);
   return maxDist;
 }
+let lookingUp = false; // 「見上げる」ボタン押下中はtrue。月を見るための一時的な浅い見下ろし角に切り替える
 function updateCamera(dt){
   const y = currentWorldY() + TUNE.ballR;
   if(tower && tower.open){
-    // 月夜の迷宮: 回転しない固定方向カメラ。camHeadingはstartGameで月の方角に固定し、以後変えない
-    // （操作(常に世界固定軸)とカメラ向きがズレて回転すると操作感が破綻するため、カメラの回転自体をやめた。
-    // 固定方向を月の方角に合わせることで、月が常に画角に入り続け、方角の目印としても機能する）
+    // 月夜の迷宮: 回転しない固定方向カメラ（camHeading=OPEN_CAM_HEADINGで固定、以後変えない）。
+    // 操作(常に世界固定軸)とカメラ向きがズレて回転すると操作感が破綻するため、回転自体をやめた。
     const eyeY = y + TUNE.openCamH;
     const dirX = Math.sin(camHeading), dirZ = Math.cos(camHeading);
     const safeDist = cameraSafeDist(ball.x, eyeY, ball.z, -dirX, 0, -dirZ, TUNE.openCamD);
@@ -1661,12 +1667,12 @@ function updateCamera(dt){
     const curDist = Math.hypot(camera.position.x-ball.x, camera.position.y-eyeY, camera.position.z-ball.z);
     const lerpSpeed = safeDist < curDist-0.05 ? 20 : TUNE.camLerp;
     camera.position.lerp(target, 1-Math.exp(-lerpSpeed*dt));
-    // 注視点は常にcamHeading（進行方向）基準。カメラ位置をずらしても見る先はブレさせない。
-    // 高さ(y+openLookY)はボールの接地高さ基準の絶対値にしてあるので、カメラ高さ(openCamH)を
-    // 上げるほど見下ろし角が自動的に深くなる（旧実装は目線からの相対オフセットだったため、
-    // カメラを壁より高く上げるとほぼ水平線しか見えずボールが画面外に消えていた）。
+    // 注視点の高さはボール接地高さ基準の絶対値。通常は壁・通路が見やすい深めの見下ろし(openLookY)、
+    // 「見上げる」ボタン押下中だけ月が画角に入る浅い角度(openLookYUp)へ滑らかに切り替える。
     const lookDirX = Math.sin(camHeading), lookDirZ = Math.cos(camHeading);
-    camera.lookAt(ball.x + lookDirX*TUNE.openLookAhead, y+TUNE.openLookY, ball.z + lookDirZ*TUNE.openLookAhead);
+    const targetLookY = lookingUp ? TUNE.openLookYUp : TUNE.openLookY;
+    camCurLookY += (targetLookY - camCurLookY) * (1-Math.exp(-8*dt));
+    camera.lookAt(ball.x + lookDirX*TUNE.openLookAhead, y+camCurLookY, ball.z + lookDirZ*TUNE.openLookAhead);
     return;
   }
   const target = new THREE.Vector3(ball.x, y+TUNE.camH, ball.z+TUNE.camD);
@@ -2057,7 +2063,7 @@ function calibrate(cb){
     }
   }, 750);
 }
-const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,#inv,.overlay,#minimap,#minimapBig');
+const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,#inv,.overlay,#minimap,#minimapBig,#lookUpBtn');
 let dragOn=false, dragCX=0, dragCY=0;
 function bindFinger(){
   window.addEventListener('pointerdown', e=>{
@@ -2322,16 +2328,14 @@ function startGame(newSeed){
   distField=null; comboN=0; comboT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
-  // 固定方向カメラ。迷路は軸並行(0/90/180/270度)なので、向きは必ずその4方向のどれかにする。
-  // （前バージョンは月の方角(ランダムな連続角)にそのまま合わせていたため、通路の軸とズレて
-  // 常に壁を斜めに見る格好になり、画面のほとんどが壁で埋まる不具合になっていた）
-  camHeading = 0;
+  camHeading = tower.open ? OPEN_CAM_HEADING : 0;
+  lookingUp = false; camCurLookY = TUNE.openLookY;
   if(tower.open){
     const eyeY0 = y0+TUNE.openCamH;
     const dirX0 = Math.sin(camHeading), dirZ0 = Math.cos(camHeading);
     const safeDist0 = cameraSafeDist(ball.x, eyeY0, ball.z, -dirX0, 0, -dirZ0, TUNE.openCamD);
     camera.position.set(ball.x-dirX0*safeDist0, eyeY0, ball.z-dirZ0*safeDist0);
-    camera.lookAt(ball.x+dirX0*TUNE.openLookAhead, y0+TUNE.openLookY, ball.z+dirZ0*TUNE.openLookAhead);
+    camera.lookAt(ball.x+dirX0*TUNE.openLookAhead, y0+camCurLookY, ball.z+dirZ0*TUNE.openLookAhead);
   } else {
     camera.position.set(ball.x, y0+TUNE.camH, ball.z+TUNE.camD);
     camera.lookAt(ball.x, y0, ball.z);
@@ -2340,6 +2344,7 @@ function startGame(newSeed){
   el('minimap').classList.toggle('hidden', !!tower.open); // 月夜の迷宮はミニマップなし（月で方角を掴む）
   el('menuBtn').classList.remove('hidden');
   el('dbgBtn').classList.remove('hidden');
+  el('lookUpBtn').classList.toggle('hidden', !tower.open); // 見上げるボタンは月夜の迷宮限定
   el('orbB').classList.toggle('hidden', !!tower.endless);
   el('lightB').classList.toggle('hidden', !tower.endless);
   el('steleBtn').classList.toggle('hidden', !!tower.endless); // 無限の塔に石碑はない
@@ -2364,6 +2369,7 @@ function finishGame(){
   el('minimap').classList.add('hidden');
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
+  el('lookUpBtn').classList.add('hidden'); lookingUp = false;
   el('inv').classList.add('hidden');
   el('result').classList.remove('hidden');
 }
@@ -2463,6 +2469,7 @@ function dieEndless(){
   el('minimap').classList.add('hidden');
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
+  el('lookUpBtn').classList.add('hidden'); lookingUp = false;
   el('inv').classList.add('hidden');
   el('result').classList.remove('hidden');
 }
@@ -2582,6 +2589,15 @@ function bindDebugPanel(){
     calibrate(()=>{});
   };
 }
+function bindLookUp(){
+  const btn = el('lookUpBtn');
+  const on = e=>{ e.preventDefault(); lookingUp = true; btn.classList.add('active'); };
+  const off = ()=>{ lookingUp = false; btn.classList.remove('active'); };
+  btn.addEventListener('pointerdown', on);
+  btn.addEventListener('pointerup', off);
+  btn.addEventListener('pointerleave', off);
+  btn.addEventListener('pointercancel', off);
+}
 function updateDebugReadout(){
   if(el('dbg').classList.contains('hidden')) return;
   el('v_raw').textContent = lastG.x.toFixed(1)+','+lastG.y.toFixed(1)+','+lastG.z.toFixed(1)+' / tilt:'+smTiltX.toFixed(2)+','+smTiltY.toFixed(2);
@@ -2645,6 +2661,7 @@ el('retireBtn').onclick = ()=>{
   el('minimap').classList.add('hidden');
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
+  el('lookUpBtn').classList.add('hidden'); lookingUp = false;
   el('inv').classList.add('hidden');
   state.phase='menu';
   updateLoreBtn();
@@ -2713,6 +2730,7 @@ bindDebugPanel();
 loadBright();
 bindBrightness();
 bindFinger();
+bindLookUp();
 prevT = performance.now();
 loop();
 
