@@ -23,6 +23,7 @@
   #dbgBtn{position:fixed;top:10px;right:10px;z-index:8;pointer-events:auto;cursor:pointer;width:34px;height:34px;border-radius:50%;border:none;background:rgba(245,239,225,.9);color:#26323a;font-weight:900;font-size:16px;font-family:inherit}
   #lookUpBtn{position:fixed;right:14px;bottom:18px;z-index:8;pointer-events:auto;cursor:pointer;width:64px;height:64px;border-radius:50%;border:none;background:rgba(245,239,225,.55);color:#26323a;font-weight:900;font-size:22px;font-family:inherit;-webkit-user-select:none;user-select:none}
   #lookUpBtn.active{background:rgba(245,239,225,.95)}
+  #markerBtn{position:fixed;left:14px;bottom:18px;z-index:8;pointer-events:auto;cursor:pointer;width:64px;height:64px;border-radius:50%;border:none;background:rgba(245,239,225,.55);color:#26323a;font-weight:900;font-size:22px;font-family:inherit;-webkit-user-select:none;user-select:none}
   #dbg{position:fixed;top:50px;right:8px;z-index:8;background:rgba(16,20,26,.94);border:1px solid var(--line);border-radius:14px;padding:10px 12px;width:230px;font-size:11px;font-weight:700;max-height:80vh;overflow:auto}
   #dbg label{display:block;margin-top:7px}
   #dbg input[type=range]{width:100%}
@@ -106,6 +107,7 @@
 <button id="menuBtn" class="hidden">☰</button>
 <button id="dbgBtn" class="hidden">⚙</button>
 <button id="lookUpBtn" class="hidden">🌙</button>
+<button id="markerBtn" class="hidden">📍</button>
 <div id="top" class="hud hidden">
   <div class="badge"><div class="cap">タイム</div><div class="val" id="timeV">0:00.0</div></div>
   <div class="badge"><div class="cap">フロア</div><div class="val" id="floorV">1F</div></div>
@@ -249,7 +251,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
    S1. 定数（調整値は必ずここに集約。マジックナンバー禁止）
    ========================================================================= */
 const T = { WALL:0, FLOOR:1, HOLE:2, STAIR_UP:3, STAIR_DOWN:4, EXIT:5,
-            ICE:6, SAND:7, CRACK:8, GRATE:9, DOOR_LOCK:10, DOOR_ONEWAY:11, WIND:12 };
+            ICE:6, SAND:7, CRACK:8, GRATE:9, DOOR_LOCK:10, DOOR_ONEWAY:11, WIND:12,
+            PUDDLE:13, SWITCH:14 };
 const DIRS4 = [[1,0],[-1,0],[0,1],[0,-1]];
 // 月夜の迷宮: 固定カメラの向き。標準タワーは camera.position=ball+(0,camH,+camD) で見た目上「+Zが手前/-Zが奥」
 // になる規約なので、それに合わせてcamHeading=πにする（0のままだと奥行きが逆になり、傾きと逆方向に
@@ -274,11 +277,15 @@ const TUNE = {
   openCamHSide:7, openCamDSide:2, openLookAheadSide:1.0, openLookYSide:-6,
   // openCamHをopenWallHより高くすると、水平レイ(cameraSafeDist)が壁の上を素通りするので
   // 壁への衝突判定そのものが発生しなくなる（カー・チェイスカム等で使われる「壁より高い位置から追う」対策）
-  // 無限の塔: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
+  // 無限の塔・月夜の迷宮共通: 徘徊する敵。速度はボールの終端速度(~accel/damp=7.4)よりはっきり遅くして逃げ切れるようにする
   enemySpeed:2.2, enemyAccel:6, enemyDamp:3.0,
   enemyNoticeR:5.0, enemyDecisionInterval:1.4,
   enemyContactR:0.62, enemyHitCooldown:1.8, enemyDrain:0.9,
   charmTriggerR:1.7, charmFleeDur:3.0,
+  enemyNoticeRPuddle:8.0, // 水たまりで水音を立てている間だけ索敵半径が広がる(enemyNoticeRの1.6倍相当)
+  enemyHumR:9.0, enemyHumIntervalMin:0.35, enemyHumIntervalMax:1.3, // 徘徊する敵の気配ハム(近いほど間隔短縮)
+  dampPuddle:5.0, // 月夜の迷宮: 水たまりの軽いスリップ感(iceとsandの中間)
+  markerMax:6, // 月夜の迷宮: 道しるべマーカーの所持上限
 };
 const GEN = {
   floorHeight:3.0, braidRate:0.12, maxRetry:40,
@@ -288,8 +295,10 @@ const GEN = {
   cursedChestChance:0.16, // 無限の塔: 3階以降、床アイテム抽選のたびにこの確率で出現
   charmChance:0.14, // 無限の塔: 3階以降、床アイテム抽選のたびにこの確率で「鈴のお守り」が出現
   // 月夜の迷宮(N=61、面積は「巨大」の約4倍): 単層の広大な迷路用の個数。要調整前提の初期値
-  openIce:6, openSand:4, openWind:4, openGrates:18,
+  openIce:6, openSand:4, openWind:4, openGrates:18, openPuddle:5,
   openOrbs:26, openTorches:30, openChests:5, openSteles:5,
+  openEnemies:5, openCharms:3, // 徘徊する敵・お守り
+  openGates:2, // 隠しスイッチ→近道ゲートの組数
 };
 const SIZES = {
   small:{label:'こじんまり', sub:'7×7 / 2階', N:15, floors:2, compartmentFloors:[0]},
@@ -1033,7 +1042,7 @@ function genOpenTower(seed, N){
   for(let attempt=0; attempt<GEN.maxRetry; attempt++){
     const rng = mulberry32((seed + attempt*7919) >>> 0);
     const fl = genFloor(rng, N);
-    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set();
+    fl.onewayAt=new Map(); fl.items=[]; fl.leakHoles=new Set(); fl.enemies=[]; fl.switchAt=new Map();
     fl.stairUp=null; fl.stairDown=null; fl.doorLock=null; fl.start=null; fl.exit=null;
     const reserved = new Set();
     const cn=(N-1)/2, cells=[];
@@ -1051,8 +1060,9 @@ function genOpenTower(seed, N){
     fl.tiles[idx(N,exitCell.x,exitCell.y)] = T.EXIT;
     reserved.add(key2(exitCell.x,exitCell.y));
 
-    // ハザード: 氷・砂・風・格子
+    // ハザード: 氷・水たまり・砂・風（水たまりは目玉演出なので、placePatchが埋まってくる前＝早めに置く）
     placePatch(fl, N, rng, GEN.openIce, T.ICE, reserved);
+    placePatch(fl, N, rng, GEN.openPuddle, T.PUDDLE, reserved);
     placePatch(fl, N, rng, GEN.openSand, T.SAND, reserved);
     placePatch(fl, N, rng, GEN.openWind, T.WIND, reserved);
     { const wd = pick(DIRS4, rng); fl.windDir = {dx:wd[0], dy:wd[1]}; }
@@ -1066,6 +1076,48 @@ function genOpenTower(seed, N){
     // 検証: スタートから出口へ到達できること（壁・穴・ひびを避けたBFS。このモードは穴・ひび自体を生成しないので実質は壁のみ）
     const reach = endlessReach(fl, N, start);
     if(!reach[idx(N,exitCell.x,exitCell.y)]) continue;
+
+    // 隠しスイッチの候補探索（ブロー・アップ前のセル格子空間で）: braid()と同じ「セル(x,y)→壁(x+dx,y+dy)→
+    // 隣セル(x+2dx,y+2dy)」の形を使い、壁を崩すと2つの到達可能なセルがつながる「近道」を探す。
+    // 安全設計＝開けるだけ・塞がない。既に到達可能と検証済みの迷路へ辺を足すだけなので、
+    // スイッチを踏まなくても出口到達性は常に保たれる（追加のBFS再検証は不要）。
+    const distFromStart = new Int32Array(N*N).fill(-1);
+    {
+      const si = idx(N, start.x, start.y);
+      distFromStart[si] = 0;
+      const q=[si]; let qi=0;
+      while(qi<q.length){
+        const cur=q[qi++], cx=cur%N, cy=(cur/N)|0;
+        for(const [dx,dy] of DIRS4){
+          const nx=cx+dx, ny=cy+dy;
+          if(!inb(N,nx,ny)) continue;
+          const ni = idx(N,nx,ny);
+          if(distFromStart[ni]!==-1 || fl.tiles[ni]===T.WALL) continue;
+          distFromStart[ni] = distFromStart[cur]+1;
+          q.push(ni);
+        }
+      }
+    }
+    const gateCandidates=[]; const seenWall=new Set();
+    for(let cy=0;cy<cn;cy++)for(let cx=0;cx<cn;cx++){
+      const x=2*cx+1, y=2*cy+1;
+      for(const [dx,dy] of DIRS4){
+        const wx=x+dx, wy=y+dy, fx=x+2*dx, fy=y+2*dy;
+        if(!inb(N,fx,fy) || fl.tiles[idx(N,wx,wy)]!==T.WALL) continue;
+        if(!reach[idx(N,x,y)] || !reach[idx(N,fx,fy)]) continue;
+        const wkey = key2(wx,wy);
+        if(seenWall.has(wkey)) continue;
+        seenWall.add(wkey);
+        gateCandidates.push({wx,wy, gap:Math.abs(distFromStart[idx(N,x,y)]-distFromStart[idx(N,fx,fy)])});
+      }
+    }
+    gateCandidates.sort((a,b)=>b.gap-a.gap);
+    const chosenGates=[];
+    for(const g of gateCandidates){
+      if(chosenGates.length>=GEN.openGates) break;
+      if(chosenGates.some(o=> cellDist({x:o.wx,y:o.wy},{x:g.wx,y:g.wy}) < N/6)) continue; // ゲート同士が近すぎないように間引く
+      chosenGates.push(g);
+    }
 
     // 通路・壁を2倍サイズにブロー・アップ（1マス幅の通路だと3人称カメラが背後に下がれず壁に張り付く問題の対策。
     // トポロジーは不変のまま、生成済みタイルを2x2ブロックへ展開するだけ＝アイテム配置等はこの後の座標系で行う）
@@ -1112,6 +1164,27 @@ function genOpenTower(seed, N){
       fl.items.push({kind:'torch', x:spot.x, y:spot.y, wdx, wdy, taken:false});
     }
 
+    // 徘徊する敵・鈴のお守り: 無限の塔と同じ仕組みを月夜の迷宮でも使う。スタートに近すぎない場所へ。
+    const enemyCand = shuffled(floorTiles.filter(c=> cellDist(c, fl.start) >= 8), rng);
+    for(let i=0;i<GEN.openEnemies && i<enemyCand.length;i++){
+      const c = enemyCand[i];
+      fl.enemies.push({x:c.x+0.5, z:c.y+0.5, vx:0, vz:0, decisionT:rng()*TUNE.enemyDecisionInterval, dirX:0, dirZ:1, fleeUntil:0, hitCooldown:0, mesh:null});
+    }
+    for(let i=0;i<GEN.openCharms && pi<pool.length;i++,pi++)
+      fl.items.push({kind:'charm', x:pool[pi].x, y:pool[pi].y, taken:false});
+
+    // 隠しスイッチ: chosenGates(ブロー・アップ前の壁座標)を2倍空間へ変換し、崩す壁を2x2ブロック分すべて指定する
+    // （ブロー・アップで壁も通路も2倍の太さになっているため、片側だけ崩しても通路幅が繋がらない）。
+    for(const g of chosenGates){
+      const gx0=g.wx*2, gy0=g.wy*2;
+      const gateCells=[[gx0,gy0],[gx0+1,gy0],[gx0,gy0+1],[gx0+1,gy0+1]];
+      const switchCand = shuffled(floorTiles.filter(c=> cellDist(c, {x:gx0,y:gy0}) >= N2/3), rng);
+      if(!switchCand.length) continue;
+      const sw = switchCand[0];
+      fl.tiles[idx(N2, sw.x, sw.y)] = T.SWITCH;
+      fl.switchAt.set(key2(sw.x,sw.y), {x:sw.x, y:sw.y, gateCells, triggered:false, mesh:null});
+    }
+
     // カメラは常にOPEN_CAM_HEADING固定（回転しない）なので、月もその方角に固定して常に画角に入るようにする。
     fl.moonAngle = OPEN_CAM_HEADING;
     return { seed, N:N2, floors:[fl], start:fl.start, open:true, sizeKey:'abyss' };
@@ -1139,6 +1212,7 @@ let comboN = 0, comboT = 0;
 let rawTiltX = 0, rawTiltY = 0, smTiltX = 0, smTiltY = 0;
 let baseGX = 0, baseGY = 0, baseGZ = 0, lastG = {x:0,y:0,z:9.8};
 let mmBigFloor = 0, mmTimer = 0;
+let enemyHumT = 0; // 徘徊する敵の気配ハムのクールダウン
 let prevT = 0;
 
 const ball = { x:0, z:0, vx:0, vz:0, lightR: TUNE.lightR0 };
@@ -1147,6 +1221,7 @@ const state = {
   checkpoint:null, timeMs:0, prevCell:null, stairArmed:true,
   nudge:{stillT:0, kicking:false, kickIdx:0, kickT:0},
   blessings:{}, maxF:0, fragRun:0, // 無限の塔: 加護・最高到達階・このランで拾った欠片
+  markerCount:0, // 月夜の迷宮: 道しるべマーカーの所持数
 };
 
 /* ===== S5. THREE初期化 ===== */
@@ -1271,6 +1346,11 @@ const MAT = {
   stele: new THREE.MeshStandardMaterial({color:0x6a7a8a, roughness:0.8}),
   fragment: new THREE.MeshStandardMaterial({color:0x9fd8ff, emissive:0x4aa0e8, emissiveIntensity:1.0, roughness:0.4}),
   charm: new THREE.MeshStandardMaterial({color:0xd8b04a, metalness:0.6, roughness:0.35, emissive:0x8a5a10, emissiveIntensity:0.4}),
+  puddle: new THREE.MeshStandardMaterial({color:0x14202a, roughness:0.08, metalness:0.2}),
+  puddleGlint: new THREE.MeshBasicMaterial({color:0xfef6e0, transparent:true, opacity:0.5, fog:false, depthWrite:false}),
+  switchStone: new THREE.MeshStandardMaterial({color:0x3a4a5a, roughness:0.6, emissive:0x6ac8ff, emissiveIntensity:0.9}),
+  switchStoneUsed: new THREE.MeshStandardMaterial({color:0x2a302a, roughness:0.8, emissive:0x2a4a3a, emissiveIntensity:0.15}),
+  marker: new THREE.MeshStandardMaterial({color:0xfff2c0, emissive:0xffdf7a, emissiveIntensity:1.4, roughness:0.4}),
   enemyBody: new THREE.MeshStandardMaterial({color:0x241a2e, roughness:0.95}),
   enemyEye: new THREE.MeshBasicMaterial({color:0xff3050, fog:false}),
   ball: new THREE.MeshStandardMaterial({color:0xffffff, map:BALL_TEX, emissive:0xffc078, emissiveMap:BALL_TEX, emissiveIntensity:1.3, roughness:0.35}),
@@ -1390,6 +1470,23 @@ function makeDoorOnewayMesh(info){
   m.position.set(info.x+0.5, 0.6, info.y+0.5);
   return m;
 }
+function makeSwitchMesh(info){
+  const m = new THREE.Mesh(GEO3.circle, (info.triggered?MAT.switchStoneUsed:MAT.switchStone).clone());
+  m.rotation.x = -Math.PI/2;
+  m.scale.setScalar(1.3);
+  m.position.set(info.x+0.5, 0.02, info.y+0.5);
+  info.mesh = m;
+  return m;
+}
+// 水たまりに映る月: カメラの向きも月の方角も常にOPEN_CAM_HEADING固定なので、
+// 反射光の見た目位置はタイル中心からの一定オフセットだけで近似できる（リアルタイム反射計算は不要）
+function makePuddleGlint(x,y){
+  const disc = new THREE.Mesh(GEO3.circle, MAT.puddleGlint);
+  disc.rotation.x = -Math.PI/2;
+  disc.scale.setScalar(0.22);
+  disc.position.set(x+0.5+Math.sin(OPEN_CAM_HEADING)*0.18, 0.001, y+0.5+Math.cos(OPEN_CAM_HEADING)*0.18);
+  return disc;
+}
 function buildItemMesh(it, group){
   let g = new THREE.Group();
   if(it.kind==='orb'){
@@ -1479,6 +1576,17 @@ function buildItemMesh(it, group){
     ring.position.y = 0.44;
     g.add(ring);
     g.position.set(it.x+0.5, 0, it.y+0.5);
+  } else if(it.kind==='marker'){
+    // 道しるべ: 細い発光の柱。プレイヤーが自分で置く目印なので遠くからでも視認できる高さにする
+    const pole = new THREE.Mesh(GEO3.cyl, MAT.marker);
+    pole.scale.set(0.05,1.1,0.05);
+    pole.position.y = 0.55;
+    g.add(pole);
+    const cap = new THREE.Mesh(GEO3.sphLo, MAT.marker);
+    cap.scale.setScalar(0.12);
+    cap.position.y = 1.12;
+    g.add(cap);
+    g.position.set(it.x+0.5, 0, it.y+0.5);
   } else {
     g = null;
   }
@@ -1517,6 +1625,7 @@ function buildOneFloorGroup(tw, f){
     else if(t===T.CRACK) bucket='crack';
     else if(t===T.EXIT) bucket='exit';
     else if(t===T.WIND) bucket='wind';
+    else if(t===T.PUDDLE) bucket='puddle';
     else bucket='floor';
     (byType[bucket]=byType[bucket]||[]).push([x,y]);
   }
@@ -1528,6 +1637,8 @@ function buildOneFloorGroup(tw, f){
   addInstanced(group, byType.crack, GEO3.floorBox, MAT.crack, -0.06);
   addInstanced(group, byType.exit, GEO3.floorBox, MAT.exit, -0.05);
   addInstanced(group, byType.wind, GEO3.floorBox, MAT.wind, -0.055);
+  addInstanced(group, byType.puddle, GEO3.floorBox, MAT.puddle, -0.05);
+  if(byType.puddle) for(const [x,y] of byType.puddle) group.add(makePuddleGlint(x,y));
   if(byType.wind && fl.windDir) for(const [x,y] of byType.wind) group.add(makeWindMark(x,y,fl.windDir));
   if(byType.grate) for(const [x,y] of byType.grate) group.add(makeGrateMesh(x,y));
   if(byType.hole) for(const [x,y] of byType.hole) group.add(makeHoleRim(x,y, fl.leakHoles.has(key2(x,y))));
@@ -1535,6 +1646,7 @@ function buildOneFloorGroup(tw, f){
   if(fl.stairDown) group.add(makeStairMesh(fl.stairDown.x, fl.stairDown.y, false));
   if(fl.doorLock && fl.tiles[idx(N,fl.doorLock.x,fl.doorLock.y)]===T.DOOR_LOCK) group.add(makeDoorLockMesh(fl.doorLock.x, fl.doorLock.y, fl));
   for(const [,info] of fl.onewayAt) group.add(makeDoorOnewayMesh(info));
+  if(fl.switchAt) for(const [,info] of fl.switchAt) group.add(makeSwitchMesh(info));
   for(const it of fl.items) if(!it.taken) buildItemMesh(it, group);
   if(fl.enemies) for(const en of fl.enemies) buildEnemyMesh(en, group);
   return group;
@@ -1600,7 +1712,7 @@ function updateTorchPool(dt){
   if(torchAssignT>0) return;
   torchAssignT = 0.5;
   const fl = tower.floors[state.f];
-  const torches = fl.items.filter(it=>it.kind==='torch');
+  const torches = fl.items.filter(it=> !it.taken && (it.kind==='torch' || it.kind==='marker'));
   const withDist = torches.map(it=>({it, d:(it.x+0.5-ball.x)**2+(it.y+0.5-ball.z)**2}));
   withDist.sort((a,b)=>a.d-b.d);
   for(let i=0;i<torchLightPool.length;i++){
@@ -1760,6 +1872,16 @@ function collapseCrack(f,x,y){
   invalidateDistField();
   toast('ひび割れ床が崩落した！');
 }
+// 隠しスイッチ: 踏むと別の場所の壁が崩れて近道が開く（安全設計＝開けるだけ・塞がない。トリガー地点は明示しない）
+function triggerGate(fl, info){
+  info.triggered = true;
+  if(info.mesh) info.mesh.material = MAT.switchStoneUsed;
+  for(const [gx,gy] of info.gateCells) fl.tiles[gy*fl.N+gx] = T.FLOOR;
+  rebuildFloorGroup(state.f);
+  invalidateDistField();
+  distantThud();
+  toast('どこかで、重い扉が開くような音がした…');
+}
 function pickupItem(it, fl){
   if(it.kind==='stele'){
     // 石碑は消費しない: 何度でも触れて checkpoint を切り替えられる（見た目も残す）
@@ -1824,19 +1946,33 @@ function pickupItem(it, fl){
     showPickup('🔔','鈴のお守り','敵が近づくと自動で鳴り、怯ませて追い払う');
     beep(700,0.1,'triangle'); setTimeout(()=>beep(1000,0.15,'triangle'),100);
     updateInv();
+  } else if(it.kind==='marker'){
+    state.markerCount = Math.min(TUNE.markerMax, (state.markerCount||0)+1);
+    toast('道しるべを回収した');
+    beep(500,0.08,'sine',0.08); setTimeout(()=>beep(700,0.1,'sine',0.06),60);
+    updateInv();
   }
 }
 function updateTileTriggers(){
   const cx = Math.floor(ball.x), cz = Math.floor(ball.z);
   const fl = tower.floors[state.f];
   const cellBeforeThisFrame = state.prevCell;
-  if(cellBeforeThisFrame && (cx!==cellBeforeThisFrame.x || cz!==cellBeforeThisFrame.y)){
+  const cellChanged = !!cellBeforeThisFrame && (cx!==cellBeforeThisFrame.x || cz!==cellBeforeThisFrame.y);
+  if(cellChanged){
     const pt = tileAt(state.f, cellBeforeThisFrame.x, cellBeforeThisFrame.y);
     if(pt===T.CRACK && !state.blessings.feather) collapseCrack(state.f, cellBeforeThisFrame.x, cellBeforeThisFrame.y);
   }
   state.prevCell = {x:cx, y:cz};
 
   const t = tileAt(state.f, cx, cz);
+  if(t===T.PUDDLE && cellChanged){
+    // 水音: 音を立てると近くの敵に気づかれやすくなる（updateEnemiesでenemyNoticeRPuddleを適用）
+    beep(720,0.09,'sine',0.1); setTimeout(()=>beep(540,0.11,'sine',0.06),50);
+  }
+  if(t===T.SWITCH){
+    const info = fl.switchAt.get(key2(cx,cz));
+    if(info && !info.triggered) triggerGate(fl, info);
+  }
   if(t===T.STAIR_UP && state.stairArmed){ beginStairs(cx,cz,true); return; }
   if(t===T.STAIR_DOWN && state.stairArmed){ beginStairs(cx,cz,false); return; }
   if(t!==T.STAIR_UP && t!==T.STAIR_DOWN) state.stairArmed = true;
@@ -1865,7 +2001,13 @@ function updateTileTriggers(){
   for(const it of fl.items){
     if(it.taken || it.kind==='torch') continue; // 松明は拾えない（飾り＋光源）
     const rr = (it.kind==='orb' && state.blessings.magnet)? 1.6 : 0.5;
-    if(Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5)) < rr) pickupItem(it, fl);
+    const d = Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5));
+    if(it.kind==='marker' && !it.armed){
+      // 置いた足元で即回収されるのを防ぐ: 一度そのタイルから離れるまでは回収対象にしない
+      if(d > 1.0) it.armed = true;
+      else continue;
+    }
+    if(d < rr) pickupItem(it, fl);
   }
 }
 // 無限の塔: 徘徊する敵のAI・移動・接触判定。moveAndCollide/isSolidTileはボールと共用
@@ -1873,6 +2015,10 @@ function updateEnemies(dt){
   const fl = tower.floors[state.f];
   if(!fl.enemies || !fl.enemies.length) return;
   const now = performance.now();
+  // 水たまりで水音を立てている間は索敵半径が広がる（音を立てると気づかれやすい）
+  const ballOnPuddle = tileAt(state.f, Math.floor(ball.x), Math.floor(ball.z))===T.PUDDLE;
+  const noticeR = ballOnPuddle ? TUNE.enemyNoticeRPuddle : TUNE.enemyNoticeR;
+  let nearestD = Infinity;
   for(const en of fl.enemies){
     en.hitCooldown = Math.max(0, en.hitCooldown - dt);
     en.decisionT -= dt;
@@ -1883,7 +2029,7 @@ function updateEnemies(dt){
       if(en.fleeUntil > now){
         const len = distToBall || 1;
         en.dirX = -toBallX/len; en.dirZ = -toBallZ/len;
-      } else if(distToBall < TUNE.enemyNoticeR){
+      } else if(distToBall < noticeR){
         const len = distToBall || 1;
         en.dirX = toBallX/len; en.dirZ = toBallZ/len;
       } else {
@@ -1908,6 +2054,7 @@ function updateEnemies(dt){
       if(spd > 0.05) en.mesh.rotation.y = Math.atan2(en.vx, en.vz);
     }
     const dToBall = Math.hypot(ball.x-en.x, ball.z-en.z);
+    nearestD = Math.min(nearestD, dToBall);
     if(dToBall < TUNE.charmTriggerR && state.charms>0 && en.fleeUntil<=now){
       state.charms--;
       for(const e2 of fl.enemies) e2.fleeUntil = now + TUNE.charmFleeDur*1000;
@@ -1924,6 +2071,13 @@ function updateEnemies(dt){
       updateHUD();
     }
   }
+  // 気配ハム: ミニマップが無いモード向けの早期警戒。近いほど短い間隔・高い音で鳴る
+  enemyHumT -= dt;
+  if(nearestD < TUNE.enemyHumR && enemyHumT <= 0){
+    const p = clamp(1-(nearestD/TUNE.enemyHumR), 0, 1);
+    enemyHumT = lerp(TUNE.enemyHumIntervalMax, TUNE.enemyHumIntervalMin, p);
+    beep(70+40*p, 0.18, 'sine', 0.04+0.08*p);
+  }
 }
 function physicsStep(dt){
   smTiltX = lerp(smTiltX, rawTiltX, 1-Math.exp(-TUNE.tiltSmooth*dt));
@@ -1932,9 +2086,9 @@ function physicsStep(dt){
 
   const cellBefore = {x:Math.floor(ball.x), y:Math.floor(ball.z)};
   const curTile = tileAt(state.f, cellBefore.x, cellBefore.y);
-  const onIce = curTile===T.ICE, onSand = curTile===T.SAND, onWind = curTile===T.WIND;
+  const onIce = curTile===T.ICE, onSand = curTile===T.SAND, onWind = curTile===T.WIND, onPuddle = curTile===T.PUDDLE;
   const bl = state.blessings;
-  const damp = onIce? (bl.iceshoe? 2.2 : TUNE.dampIce) : onSand? (bl.dune? TUNE.damp : TUNE.dampSand) : TUNE.damp;
+  const damp = onIce? (bl.iceshoe? 2.2 : TUNE.dampIce) : onSand? (bl.dune? TUNE.damp : TUNE.dampSand) : onPuddle? TUNE.dampPuddle : TUNE.damp;
   const accelMul = (onSand && !bl.dune? 0.5 : 1) * Math.pow(1.15, bl.swift||0);
 
   ball.vx += dz.x * TUNE.accel * accelMul * dt;
@@ -1956,9 +2110,11 @@ function physicsStep(dt){
   updateTileTriggers();
   updateNudge(dt, speed);
 
+  // 徘徊する敵は無限の塔・月夜の迷宮の両方で動く（生成されていなければ何もしない）
+  if((tower.endless || tower.open) && state.phase==='play') updateEnemies(dt);
+
   // 無限の塔: 光＝命。時間とともに光が縮み、尽きるとラン終了
   if(tower.endless && state.phase==='play'){
-    updateEnemies(dt);
     const prevL = ball.lightR;
     ball.lightR -= lightDecayRate()*dt;
     if(prevL>2.2 && ball.lightR<=2.2) beep(220,0.35,'sine',0.2); // 残りわずか警告
@@ -2074,7 +2230,7 @@ function calibrate(cb){
     }
   }, 750);
 }
-const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,#inv,.overlay,#minimap,#minimapBig,#lookUpBtn');
+const onUI = e => e.target && e.target.closest && e.target.closest('#dbg,#dbgBtn,#menuBtn,#menu,#inv,.overlay,#minimap,#minimapBig,#lookUpBtn,#markerBtn');
 let dragOn=false, dragCX=0, dragCY=0;
 function bindFinger(){
   window.addEventListener('pointerdown', e=>{
@@ -2283,6 +2439,29 @@ function windSound(){
   src.connect(filt).connect(g).connect(actx.destination);
   src.start(t0); src.stop(t0+dur+0.05);
 }
+// 隠しスイッチ発動音: どこか遠くで重い扉が開いたような、低く長い音（場所は伝えない、気配だけ）
+function distantThud(){
+  try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+  if(actx.state==='suspended') actx.resume();
+  const dur=0.9;
+  const bufSize = Math.floor(actx.sampleRate*dur);
+  const buf = actx.createBuffer(1, bufSize, actx.sampleRate);
+  const data = buf.getChannelData(0);
+  for(let i=0;i<bufSize;i++) data[i]=Math.random()*2-1;
+  const src = actx.createBufferSource();
+  src.buffer = buf;
+  const filt = actx.createBiquadFilter();
+  filt.type='lowpass';
+  const g = actx.createGain();
+  const t0=actx.currentTime;
+  filt.frequency.setValueAtTime(150,t0);
+  filt.frequency.linearRampToValueAtTime(60,t0+dur);
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.linearRampToValueAtTime(0.16,t0+dur*0.15);
+  g.gain.linearRampToValueAtTime(0.0001,t0+dur);
+  src.connect(filt).connect(g).connect(actx.destination);
+  src.start(t0); src.stop(t0+dur+0.05);
+}
 function toast(msg){
   const t = el('toastT');
   t.textContent = msg;
@@ -2334,9 +2513,10 @@ function startGame(newSeed){
   state.checkpoint=null; state.timeMs=0; state.prevCell=null; state.stairArmed=true;
   state.nudge={stillT:0,kicking:false,kickIdx:0,kickT:0};
   state.blessings={}; state.maxF=0; state.fragRun=0;
+  state.markerCount = tower.open ? TUNE.markerMax : 0;
   ball.x=tower.start.x+0.5; ball.z=tower.start.y+0.5; ball.vx=0; ball.vz=0;
   ball.lightR=TUNE.lightR0;
-  distField=null; comboN=0; comboT=0;
+  distField=null; comboN=0; comboT=0; enemyHumT=0;
   updateFloorVisibility();
   const y0 = TUNE.ballR;
   camHeading = tower.open ? OPEN_CAM_HEADING : 0;
@@ -2356,6 +2536,7 @@ function startGame(newSeed){
   el('menuBtn').classList.remove('hidden');
   el('dbgBtn').classList.remove('hidden');
   el('lookUpBtn').classList.toggle('hidden', !tower.open); // 見上げるボタンは月夜の迷宮限定
+  el('markerBtn').classList.toggle('hidden', !tower.open); // 道しるべ設置ボタンも月夜の迷宮限定
   el('orbB').classList.toggle('hidden', !!tower.endless);
   el('lightB').classList.toggle('hidden', !tower.endless);
   el('steleBtn').classList.toggle('hidden', !!tower.endless); // 無限の塔に石碑はない
@@ -2381,6 +2562,7 @@ function finishGame(){
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
   el('lookUpBtn').classList.add('hidden'); lookingUp = false;
+  el('markerBtn').classList.add('hidden');
   el('inv').classList.add('hidden');
   el('result').classList.remove('hidden');
 }
@@ -2400,6 +2582,7 @@ function invItems(){
   if(state.hasKey) li.push({icon:'🗝️', name:'古い鍵', desc:'錠前の扉を開けられる'});
   if(state.hasCompass) li.push({icon:'🧭', name:'古の羅針盤', desc:'止まっていると出口の方角へ導いてくれる'});
   if(state.charms>0) li.push({icon:'🔔', name:'鈴のお守り', desc:'敵が近づくと自動で鳴り、怯ませて追い払う', count:state.charms});
+  if(state.markerCount>0) li.push({icon:'📍', name:'道しるべ', desc:'設置ボタンで足元に置ける。踏むと回収できる', count:state.markerCount});
   for(const [bid,n] of Object.entries(state.blessings)){
     const b = BLESSINGS[bid];
     li.push({icon:b.icon, name:b.name, desc:b.desc, count:n});
@@ -2609,6 +2792,25 @@ function bindLookUp(){
   btn.addEventListener('pointerleave', off);
   btn.addEventListener('pointercancel', off);
 }
+// 月夜の迷宮: 道しるべマーカーを足元に設置する（ホールドではなく押した瞬間に1回だけ置く）
+function placeMarker(){
+  if(state.phase!=='play' || !tower.open) return;
+  if(state.markerCount<=0){ toast('道しるべがもうない'); return; }
+  const fl = tower.floors[state.f];
+  const cx = Math.floor(ball.x), cz = Math.floor(ball.z);
+  const near = fl.items.some(it=> !it.taken && it.kind==='marker' && Math.hypot(ball.x-(it.x+0.5), ball.z-(it.y+0.5))<0.6);
+  if(near){ toast('ここには既にある'); return; }
+  state.markerCount--;
+  const it = {kind:'marker', x:cx, y:cz, taken:false, armed:false};
+  fl.items.push(it);
+  buildItemMesh(it, floorGroups[state.f]);
+  beep(600,0.08,'sine',0.1); setTimeout(()=>beep(900,0.1,'sine',0.07),50);
+  toast('道しるべを置いた');
+  updateInv();
+}
+function bindMarkerBtn(){
+  el('markerBtn').addEventListener('pointerdown', e=>{ e.preventDefault(); placeMarker(); });
+}
 function updateDebugReadout(){
   if(el('dbg').classList.contains('hidden')) return;
   el('v_raw').textContent = lastG.x.toFixed(1)+','+lastG.y.toFixed(1)+','+lastG.z.toFixed(1)+' / tilt:'+smTiltX.toFixed(2)+','+smTiltY.toFixed(2);
@@ -2673,6 +2875,7 @@ el('retireBtn').onclick = ()=>{
   el('menuBtn').classList.add('hidden');
   el('dbgBtn').classList.add('hidden');
   el('lookUpBtn').classList.add('hidden'); lookingUp = false;
+  el('markerBtn').classList.add('hidden');
   el('inv').classList.add('hidden');
   state.phase='menu';
   updateLoreBtn();
@@ -2742,6 +2945,7 @@ loadBright();
 bindBrightness();
 bindFinger();
 bindLookUp();
+bindMarkerBtn();
 prevT = performance.now();
 loop();
 
